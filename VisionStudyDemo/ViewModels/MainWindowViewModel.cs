@@ -1,9 +1,12 @@
 using Prism.Mvvm;
+using System.Windows.Input;
 
 namespace VisionStudyDemo.ViewModels
 {
     public class MainWindowViewModel : BindableBase
     {
+        #region
+        public ICommand TestCommand { get; set; }
         private string _title = "VisionStudyDemo";
 
         public string Title
@@ -17,6 +20,22 @@ namespace VisionStudyDemo.ViewModels
         {
             get => _test;
             set => SetProperty(ref _test, value);
+        }
+        #endregion
+
+      
+
+        private readonly byte[,] _gray =
+        {
+            { 220, 220, 220, 220, 220 },
+            { 220,  30,  30,  30, 220 },
+            { 220,  30,  30,  30, 220 },
+            { 220, 220, 220, 220, 220 }
+        };
+
+        public MainWindowViewModel()
+        {
+            //TestCommand = 
         }
     }
 }
