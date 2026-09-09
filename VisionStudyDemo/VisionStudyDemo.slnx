@@ -1,3 +1,5 @@
 <Solution>
+  <Folder Name="/Module/" />
+  <Folder Name="/Src/" />
   <Project Path="VisionStudyDemo.csproj" />
 </Solution>
