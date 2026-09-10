@@ -6,8 +6,44 @@
         xmlns:prism="http://prismlibrary.com/"
         prism:ViewModelLocator.AutoWireViewModel="True"
         mc:Ignorable="d"
-        Title="{Binding Title}" Height="450" Width="800">
+        Title="{Binding Title}" Height="550" Width="850">
     <Grid>
-        <Button Content="{Binding Test}" Width="150" Height="80" Command="{Binding TestCommand}"/>
+        <StackPanel>
+            <TextBlock Text="{Binding Test}" TextWrapping="Wrap" Margin="8"/>
+            <WrapPanel HorizontalAlignment="Center" Margin="0,0,0,12">
+                <Button Content="选择图片…" Padding="16,8" Margin="4" Command="{Binding SelectImageCommand}"/>
+                <Button Content="显示原图" Padding="16,8" Margin="4" Command="{Binding ShowLoadedOriginalCommand}"/>
+                <Button Content="转灰度" Padding="16,8" Margin="4" Command="{Binding ConvertToGrayCommand}"/>
+                <Button Content="数组实验" Padding="16,8" Margin="4" Command="{Binding TestCommand}"/>
+            </WrapPanel>
+            <!--<Image Source="{Binding GrayImage}"
+       Width="400"
+       Height="320"
+       Stretch="Fill" 
+       HorizontalAlignment="Center"
+       VerticalAlignment="Bottom"
+       RenderOptions.BitmapScalingMode="NearestNeighbor" />-->
+            <Grid Width="{Binding ImageDisplayWidth}" Height="{Binding ImageDisplayHeight}">
+                <Image Source="{Binding GrayImage}"
+           Stretch="{Binding ImageStretch}"
+           RenderOptions.BitmapScalingMode="{Binding ImageScalingMode}" />
+
+                <Canvas IsHitTestVisible="False">
+                    <Rectangle Canvas.Left="{Binding BoxLeft}"
+                   Canvas.Top="{Binding BoxTop}"
+                   Width="{Binding BoxWidth}"
+                   Height="{Binding BoxHeight}"
+                   Stroke="Red"
+                   StrokeThickness="2" />
+                    <Ellipse Canvas.Left="{Binding DotLeft}"
+                             Canvas.Top="{Binding DotTop}"
+                             Width="{Binding DotDiameter}"
+                             Height="{Binding DotDiameter}"
+                             Visibility="{Binding DotVisibility}"
+                             Fill="Red" />
+                </Canvas>
+            </Grid>
+        </StackPanel>
+     
     </Grid>
 </Window>
