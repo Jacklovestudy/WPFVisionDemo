@@ -6,6 +6,87 @@ namespace VisionStudyDemo.Imaging
     /// </summary>
     public static class GrayImageProcessor
     {
+        /// <summary>
+        /// 3×3 中值滤波：收集有效邻域灰度，排序后取中值。
+        /// 越界跳过；偶数个取中间两值的平均，整数除法舍去小数。
+        /// </summary>
+        public static byte[,] MedianFilter3x3(byte[,] gray)
+        {
+            ArgumentNullException.ThrowIfNull(gray);
+            int height = gray.GetLength(0);
+            int width = gray.GetLength(1);
+            byte[,] result = new byte[height, width];
+            // 最多收集 9 个灰度值。重复利用列表，避免每个像素都创建一个列表。
+            var values = new List<byte>(9);
+
+            for (int x = 0; x < height; x++) // x 是行，y 是列；当前点轮流作为中心。
+            {
+                for (int y = 0; y < width; y++)
+                {
+                    values.Clear(); // 换中心后，先清掉上一组邻域数据。
+                    for (int row = x - 1; row <= x + 1; row++)
+                    {
+                        for (int col = y - 1; col <= y + 1; col++)
+                        {
+                            if (row < 0 || row >= height || col < 0 || col >= width)
+                                continue; // 图片外没有像素，不参与排序。
+                            values.Add(gray[row, col]); // 包含中心自己，始终读取原图。
+                        }
+                    }
+
+                    values.Sort(); // 只排序收集的灰度值，不移动原图中的像素。
+                    int count = values.Count;
+                    int middle = count / 2;
+                    if (count % 2 == 1)
+                        result[x, y] = values[middle]; // 9 个数取索引 4（第 5 个）。
+                    else
+                        result[x, y] = (byte)((values[middle - 1] + values[middle]) / 2);
+                    // 写入新图的相同位置，避免处理结果影响后面像素的邻域。
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// 3×3 均值滤波：每个像素轮流作为中心，取有效邻域的平均灰度。
+        /// 越界位置不参与计算；整数除法舍去小数。返回新数组，不修改输入。
+        /// </summary>
+        public static byte[,] MeanFilter3x3(byte[,] gray)
+        {
+            ArgumentNullException.ThrowIfNull(gray);
+            int height = gray.GetLength(0);
+            int width = gray.GetLength(1);
+            byte[,] result = new byte[height, width];
+
+            // 外面两层：依次选择整张图中的中心像素。x 是行，y 是列。
+            for (int x = 0; x < height; x++)
+            {
+                for (int y = 0; y < width; y++)
+                {
+                    int sum = 0;   // 每换一个中心，就重新累计灰度总和。
+                    int count = 0; // 实际参与计算的像素数，包含中心自己。
+
+                    // 里面两层：检查中心周围的 3 行 × 3 列。
+                    for (int row = x - 1; row <= x + 1; row++)
+                    {
+                        for (int col = y - 1; col <= y + 1; col++)
+                        {
+                            // 边界外没有像素，跳过；不要当成灰度 0 加进去。
+                            if (row < 0 || row >= height || col < 0 || col >= width)
+                                continue;
+
+                            sum += gray[row, col];
+                            count++;
+                        }
+                    }
+
+                    // 有几个有效像素就除以几。中心自己有效，所以 count 至少为 1。
+                    // 始终读取 gray、写入 result，避免已处理的值影响后续计算。
+                    result[x, y] = (byte)(sum / count);
+                }
+            }
+            return result;
+        }
 
 
         /// <summary>从原图裁剪指定区域，返回新的二维灰度数组。</summary>

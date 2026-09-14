@@ -12,12 +12,53 @@ internal static class Program
     private static void Main(string[] args)
     {
         var vm = new MainWindowViewModel();
+        if (vm.MedianFilterCommand.CanExecute() || vm.MedianBinaryCommand.CanExecute())
+            throw new Exception("Median commands enabled without photo");
+        var medianVm = new MainWindowViewModel();
+        var medianInput = System.Windows.Media.Imaging.BitmapSource.Create(3, 3, 96, 96,
+            PixelFormats.Gray8, null, new byte[] { 100,100,100,100,255,100,100,100,100 }, 3);
+        typeof(MainWindowViewModel).GetField("_loadedOriginal", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(medianVm, medianInput);
+        for (int repeat = 0; repeat < 2; repeat++)
+        {
+            medianVm.MedianFilterCommand.Execute();
+            byte[] actual = new byte[9];
+            medianVm.GrayImage!.CopyPixels(actual, 3, 0);
+            if (actual.Any(value => value != 100) || !medianVm.GrayImage.IsFrozen)
+                throw new Exception("Photo median output incorrect");
+        }
+        medianVm.MedianBinaryCommand.Execute();
+        byte[] medianBinary = new byte[9];
+        medianVm.GrayImage!.CopyPixels(medianBinary, 3, 0);
+        if (medianBinary.Any(value => value != 0)) throw new Exception("Median threshold equality failed");
+        medianVm.ShowLoadedOriginalCommand.Execute();
+        if (!ReferenceEquals(medianVm.GrayImage, medianInput)) throw new Exception("Median lost original photo");
+        // 用已知灰度图检查照片包装、命令以及重复点击不会累计处理。
+        if (vm.MeanFilterCommand.CanExecute() || vm.MeanBinaryCommand.CanExecute())
+            throw new Exception("Mean commands enabled without photo");
+        var meanVm = new MainWindowViewModel();
+        var input = System.Windows.Media.Imaging.BitmapSource.Create(3, 3, 96, 96,
+            PixelFormats.Gray8, null, new byte[] { 10,10,10,10,100,10,10,10,10 }, 3);
+        typeof(MainWindowViewModel).GetField("_loadedOriginal", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(meanVm, input);
+        for (int repeat = 0; repeat < 2; repeat++)
+        {
+            meanVm.MeanFilterCommand.Execute();
+            byte[] actual = new byte[9];
+            meanVm.GrayImage!.CopyPixels(actual, 3, 0);
+            if (!actual.SequenceEqual(new byte[] { 32,25,32,25,20,25,32,25,32 }))
+                throw new Exception("Photo mean output incorrect");
+        }
+        meanVm.MeanBinaryCommand.Execute();
+        byte[] binaryMean = new byte[9];
+        meanVm.GrayImage!.CopyPixels(binaryMean, 3, 0);
+        if (binaryMean.Any(value => value != 255)) throw new Exception("Mean then threshold failed");
         // 加载真实 XAML，但不显示窗口、不干扰正在运行的学习程序。
         var window = new MainWindow { DataContext = vm };
         var content = (FrameworkElement)window.Content;
         content.Measure(new Size(800, 600));
         content.Arrange(new Rect(0, 0, 800, 600));
-        var box = FindRectangle(content) ?? throw new Exception("Missing overlay rectangle");
+        var box = (Rectangle?)window.FindName("RegionBox") ?? throw new Exception("Missing overlay rectangle");
         int checks = 0;
 
         void CheckDot(double? centerLeft, double? centerTop)
@@ -85,6 +126,7 @@ internal static class Program
         RunExperiment("ShowConnectedComponents", new byte[,] { { 220, 30 } }, 100);
         CheckDot(300, 160); // 单像素标在方块中心
         if (vm.ConvertToGrayCommand.CanExecute()) throw new Exception("Gray command enabled before loading");
+        if (vm.ConvertToBinaryCommand.CanExecute()) throw new Exception("Binary command enabled before loading");
         var rgb = System.Windows.Media.Imaging.BitmapSource.Create(3, 1, 96, 96,
             PixelFormats.Rgb24, null, new byte[] {255,0,0, 0,255,0, 0,0,255}, 9);
         var gray = VisionStudyDemo.Imaging.ImageFileLoader.ToGray(rgb);
@@ -106,6 +148,19 @@ internal static class Program
             vm.ConvertToGrayCommand.Execute();
             if (vm.GrayImage!.Format != PixelFormats.Gray8 || vm.GrayImage.PixelWidth != original.PixelWidth)
                 throw new Exception("Grayscale photo output incorrect");
+            vm.ConvertToBinaryCommand.Execute();
+            var binaryPhoto = vm.GrayImage!;
+            byte[] binaryPixels = new byte[binaryPhoto.PixelWidth * binaryPhoto.PixelHeight];
+            binaryPhoto.CopyPixels(binaryPixels, binaryPhoto.PixelWidth, 0);
+            if (binaryPhoto.Format != PixelFormats.Gray8 || binaryPhoto.PixelWidth != original.PixelWidth ||
+                binaryPhoto.PixelHeight != original.PixelHeight || binaryPixels.Any(p => p != 0 && p != 255) ||
+                !binaryPixels.Contains((byte)0) || !binaryPixels.Contains((byte)255))
+                throw new Exception("Photo binary output incorrect");
+            vm.ConvertToBinaryCommand.Execute();
+            byte[] repeated = new byte[binaryPixels.Length];
+            vm.GrayImage!.CopyPixels(repeated, binaryPhoto.PixelWidth, 0);
+            if (!repeated.SequenceEqual(binaryPixels)) throw new Exception("Binary command accumulated changes");
+            checks++;
             vm.ShowLoadedOriginalCommand.Execute();
             if (!ReferenceEquals(original, vm.GrayImage)) throw new Exception("Original photo not preserved");
             RunExperiment("ShowConnectedComponents", moved, 100);
@@ -115,6 +170,66 @@ internal static class Program
             CheckDot(null, null);
             checks++;
             Console.WriteLine($"Photo verified: {original.PixelWidth} x {original.PixelHeight}; Gray8, original toggle, released file lock.");
+            // Uniform 显示会有上下留白，框选坐标必须扣除留白。
+            var viewport = new Size(400, 320);
+            var bounds = VisionStudyDemo.Imaging.RoiCoordinates.GetImageBounds(original, viewport);
+            vm.SelectRoiCommand.Execute();
+            if (vm.BeginRoiDrag(new Point(1, 0), viewport)) throw new Exception("Letterbox accepted as image");
+            var selection = new Int32Rect(600, 300, 600, 600);
+            var displaySelection = VisionStudyDemo.Imaging.RoiCoordinates.ToDisplay(selection, bounds,
+                original.PixelWidth, original.PixelHeight);
+            // 使用像素内部点避免浮点边界误差；反向拖动仍应得到同一区域。
+            Point start = new(displaySelection.Right - 0.01, displaySelection.Bottom - 0.01);
+            Point end = new(displaySelection.Left + 0.01, displaySelection.Top + 0.01);
+            if (!vm.BeginRoiDrag(start, viewport)) throw new Exception("ROI drag did not begin");
+            vm.UpdateRoiDrag(end);
+            vm.CompleteRoiDrag(end);
+            if (!vm.RoiBinaryCommand.CanExecute()) throw new Exception("ROI processing not enabled");
+            vm.RoiBinaryCommand.Execute();
+            var roiOutput = vm.GrayImage!;
+            if (roiOutput.PixelWidth != 600 || roiOutput.PixelHeight != 600)
+                throw new Exception("ROI dimensions wrong");
+            var expectedRoi = VisionStudyDemo.Imaging.ImageFileLoader.ToBinary(
+                new System.Windows.Media.Imaging.CroppedBitmap(original, selection), 100);
+            byte[] actualRoiPixels = new byte[600 * 600];
+            byte[] expectedRoiPixels = new byte[600 * 600];
+            roiOutput.CopyPixels(actualRoiPixels, 600, 0);
+            expectedRoi.CopyPixels(expectedRoiPixels, 600, 0);
+            if (!actualRoiPixels.SequenceEqual(expectedRoiPixels)) throw new Exception("ROI crop pixel mismatch");
+            if (vm.IsSelectingRoi || vm.RoiBinaryCommand.CanExecute()) throw new Exception("ROI overlay remains on cropped view");
+            checks++;
+
+            vm.SelectRoiCommand.Execute();
+            vm.BeginRoiDrag(new Point(bounds.Left, bounds.Top), viewport);
+            vm.CompleteRoiDrag(new Point(900, 900)); // 拖出边界被夹到原图内部
+            vm.RoiBinaryCommand.Execute();
+            if (vm.GrayImage!.PixelWidth != original.PixelWidth || vm.GrayImage.PixelHeight != original.PixelHeight)
+                throw new Exception("Clamped full-image ROI incorrect");
+            checks++;
+
+            vm.SelectRoiCommand.Execute();
+            vm.BeginRoiDrag(new Point(100,100), viewport);
+            vm.CompleteRoiDrag(new Point(100,100));
+            if (vm.RoiBinaryCommand.CanExecute()) throw new Exception("Click created an empty ROI");
+            vm.BeginRoiDrag(new Point(100,100), viewport);
+            vm.UpdateRoiDrag(new Point(200,200));
+            vm.CancelRoiDrag();
+            if (vm.RoiBounds.Width != 0 || vm.IsSelectingRoi) throw new Exception("Cancellation failed");
+            checks++;
+            vm.SelectRoiCommand.Execute();
+            vm.BeginRoiDrag(new Point(100,100), viewport);
+            vm.CompleteRoiDrag(new Point(200,200));
+            RunExperiment("LoadImageFile", args[0]);
+            if (vm.RoiBinaryCommand.CanExecute() || vm.RoiBounds.Width != 0)
+                throw new Exception("Loading another photo retained stale ROI");
+            checks++;
+            // 竖图有左右留白。
+            var portrait = System.Windows.Media.Imaging.BitmapSource.Create(2, 4, 96, 96,
+                PixelFormats.Gray8, null, new byte[8], 2);
+            var portraitBounds = VisionStudyDemo.Imaging.RoiCoordinates.GetImageBounds(portrait, new Size(400,320));
+            if (portraitBounds != new Rect(120,0,160,320)) throw new Exception("Portrait letterbox mapping incorrect");
+            checks++;
+            Console.WriteLine("ROI verified: letterbox, reverse drag, crop pixels, bounds, click, cancel, reload, portrait.");
         }
         window.Close();
         Console.WriteLine($"PASS: {checks} WPF box scenarios (ViewModel + XAML bindings).");

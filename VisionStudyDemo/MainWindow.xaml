@@ -6,16 +6,26 @@
         xmlns:prism="http://prismlibrary.com/"
         prism:ViewModelLocator.AutoWireViewModel="True"
         mc:Ignorable="d"
-        Title="{Binding Title}" Height="550" Width="850">
+        Title="{Binding Title}" Height="650" Width="900" MinWidth="600" MinHeight="500">
     <Grid>
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel>
             <TextBlock Text="{Binding Test}" TextWrapping="Wrap" Margin="8"/>
             <WrapPanel HorizontalAlignment="Center" Margin="0,0,0,12">
                 <Button Content="选择图片…" Padding="16,8" Margin="4" Command="{Binding SelectImageCommand}"/>
                 <Button Content="显示原图" Padding="16,8" Margin="4" Command="{Binding ShowLoadedOriginalCommand}"/>
                 <Button Content="转灰度" Padding="16,8" Margin="4" Command="{Binding ConvertToGrayCommand}"/>
+                <Button Content="均值滤波（3×3）" Padding="16,8" Margin="4" Command="{Binding MeanFilterCommand}" ToolTip="对整张原图转灰度后滤波，每次只处理一次"/>
+                <Button Content="均值后二值化（100）" Padding="16,8" Margin="4" Command="{Binding MeanBinaryCommand}"/>
+                <Button Content="中值滤波（3×3）" Padding="16,8" Margin="4" Command="{Binding MedianFilterCommand}" ToolTip="整张原图转灰度后，取有效邻域中值；每次只处理一次"/>
+                <Button Content="中值后二值化（100）" Padding="16,8" Margin="4" Command="{Binding MedianBinaryCommand}"/>
+                <Button Content="二值化（100）" Padding="16,8" Margin="4" Command="{Binding ConvertToBinaryCommand}"/>
                 <Button Content="数组实验" Padding="16,8" Margin="4" Command="{Binding TestCommand}"/>
+                <Button Content="框选 ROI" Padding="16,8" Margin="4" Command="{Binding SelectRoiCommand}"/>
+                <Button Content="ROI 二值化（100）" Padding="16,8" Margin="4" Command="{Binding RoiBinaryCommand}"/>
+                <Button Content="清除 ROI" Padding="16,8" Margin="4" Command="{Binding ClearRoiCommand}"/>
             </WrapPanel>
+            <TextBlock Text="{Binding RoiInfo}" TextWrapping="Wrap" Margin="8,0,8,8"/>
             <!--<Image Source="{Binding GrayImage}"
        Width="400"
        Height="320"
@@ -23,13 +33,25 @@
        HorizontalAlignment="Center"
        VerticalAlignment="Bottom"
        RenderOptions.BitmapScalingMode="NearestNeighbor" />-->
-            <Grid Width="{Binding ImageDisplayWidth}" Height="{Binding ImageDisplayHeight}">
+            <Grid x:Name="ImageStage" Width="{Binding ImageDisplayWidth}" Height="{Binding ImageDisplayHeight}"
+                  Background="#EEEEEE" Focusable="True"
+                  MouseLeftButtonDown="RoiMouseDown" MouseMove="RoiMouseMove"
+                  MouseLeftButtonUp="RoiMouseUp" KeyDown="RoiKeyDown" LostMouseCapture="RoiLostCapture">
+                <Grid.Style>
+                    <Style TargetType="Grid">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsSelectingRoi}" Value="True">
+                                <Setter Property="Cursor" Value="Cross"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Grid.Style>
                 <Image Source="{Binding GrayImage}"
            Stretch="{Binding ImageStretch}"
            RenderOptions.BitmapScalingMode="{Binding ImageScalingMode}" />
 
                 <Canvas IsHitTestVisible="False">
-                    <Rectangle Canvas.Left="{Binding BoxLeft}"
+                    <Rectangle x:Name="RegionBox" Canvas.Left="{Binding BoxLeft}"
                    Canvas.Top="{Binding BoxTop}"
                    Width="{Binding BoxWidth}"
                    Height="{Binding BoxHeight}"
@@ -41,9 +63,13 @@
                              Height="{Binding DotDiameter}"
                              Visibility="{Binding DotVisibility}"
                              Fill="Red" />
+                    <Rectangle Canvas.Left="{Binding RoiBounds.X}" Canvas.Top="{Binding RoiBounds.Y}"
+                               Width="{Binding RoiBounds.Width}" Height="{Binding RoiBounds.Height}"
+                               Stroke="#0078D4" StrokeThickness="2" StrokeDashArray="4,2" Fill="#180078D4"/>
                 </Canvas>
             </Grid>
         </StackPanel>
+        </ScrollViewer>
      
     </Grid>
 </Window>

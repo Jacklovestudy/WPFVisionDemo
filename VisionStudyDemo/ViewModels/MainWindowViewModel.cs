@@ -15,9 +15,98 @@ namespace VisionStudyDemo.ViewModels
         public ICommand TestCommand { get; }
         public DelegateCommand SelectImageCommand { get; }
         public DelegateCommand ConvertToGrayCommand { get; }
+        public DelegateCommand ConvertToBinaryCommand { get; }
+        public DelegateCommand MeanFilterCommand { get; }
+        public DelegateCommand MeanBinaryCommand { get; }
+        public DelegateCommand MedianFilterCommand { get; }
+        public DelegateCommand MedianBinaryCommand { get; }
         public DelegateCommand ShowLoadedOriginalCommand { get; }
         private BitmapSource? _loadedOriginal;
         private string _loadedFileName = "";
+        public DelegateCommand SelectRoiCommand { get; }
+        public DelegateCommand RoiBinaryCommand { get; }
+        public DelegateCommand ClearRoiCommand { get; }
+        private Int32Rect? _photoRoi;
+        private Point? _roiDragStart;
+        private Rect _roiImageBounds;
+        private Rect _roiBounds;
+        public Rect RoiBounds { get => _roiBounds; private set => SetProperty(ref _roiBounds, value); }
+        private bool _isSelectingRoi;
+        public bool IsSelectingRoi { get => _isSelectingRoi; private set => SetProperty(ref _isSelectingRoi, value); }
+        private string _roiInfo = "选择图片后，点击“框选 ROI”，拖动包含杯身和杯把的矩形。";
+        public string RoiInfo { get => _roiInfo; private set => SetProperty(ref _roiInfo, value); }
+
+        private void ClearPhotoRoi()
+        {
+            _photoRoi = null;
+            _roiDragStart = null;
+            RoiBounds = new Rect(0, 0, 0, 0);
+            IsSelectingRoi = false;
+            RoiInfo = "点击“框选 ROI”，在原图上拖动；反向拖动也可以。";
+            RoiBinaryCommand.RaiseCanExecuteChanged();
+        }
+
+        private void StartRoiSelection()
+        {
+            ShowLoadedOriginal();
+            IsSelectingRoi = true;
+            RoiInfo = "在原图内按住左键拖动，松开完成；Esc 取消。";
+        }
+
+        public bool BeginRoiDrag(Point point, Size viewport)
+        {
+            if (!IsSelectingRoi || _loadedOriginal == null || viewport.Width <= 0 || viewport.Height <= 0)
+                return false;
+            _roiImageBounds = RoiCoordinates.GetImageBounds(_loadedOriginal, viewport);
+            if (!_roiImageBounds.Contains(point)) return false; // 留白区不是图像
+            _photoRoi = null;
+            RoiBinaryCommand.RaiseCanExecuteChanged();
+            _roiDragStart = point;
+            RoiBounds = new Rect(point, point);
+            return true;
+        }
+
+        public void UpdateRoiDrag(Point point)
+        {
+            if (_roiDragStart is Point start)
+                RoiBounds = new Rect(start, RoiCoordinates.Clamp(point, _roiImageBounds));
+        }
+
+        public void CompleteRoiDrag(Point point)
+        {
+            if (_roiDragStart == null || _loadedOriginal == null) return;
+            UpdateRoiDrag(point);
+            _roiDragStart = null;
+            // 单击或过小拖动不生成 ROI。
+            if (RoiBounds.Width < 2 || RoiBounds.Height < 2)
+            {
+                RoiBounds = new Rect(0, 0, 0, 0);
+                RoiInfo = "范围太小，请重新拖出一个矩形。";
+                return;
+            }
+            Int32Rect roi = RoiCoordinates.ToPixels(RoiBounds, _roiImageBounds,
+                _loadedOriginal.PixelWidth, _loadedOriginal.PixelHeight);
+            if (roi.Width <= 0 || roi.Height <= 0) return;
+            _photoRoi = roi;
+            RoiBounds = RoiCoordinates.ToDisplay(roi, _roiImageBounds,
+                _loadedOriginal.PixelWidth, _loadedOriginal.PixelHeight);
+            RoiInfo = $"原图 ROI：起始行 {roi.Y}，起始列 {roi.X}，宽 {roi.Width}，高 {roi.Height}。可重新拖动或点击 ROI 二值化。";
+            RoiBinaryCommand.RaiseCanExecuteChanged();
+        }
+
+        public void CancelRoiDrag() => ClearPhotoRoi();
+
+        /// <summary>从保存的原始照片裁剪；不能从当前黑白预览上再裁剪。</summary>
+        private void ShowRoiBinary()
+        {
+            if (_loadedOriginal == null || _photoRoi is not Int32Rect roi) return;
+            var cropped = new CroppedBitmap(_loadedOriginal, roi);
+            cropped.Freeze();
+            var binary = ImageFileLoader.ToBinary(cropped, 100);
+            DisplayPhoto(binary, "ROI 二值图（灰度 < 100 为白）");
+            ImageScalingMode = BitmapScalingMode.NearestNeighbor;
+            RoiInfo = $"当前显示裁剪小图：{roi.Width} × {roi.Height}。原图起点为行 {roi.Y}、列 {roi.X}；小图索引从 [0,0] 开始。重新框选请点击“框选 ROI”。";
+        }
 
         private Stretch _imageStretch = Stretch.Fill;
         public Stretch ImageStretch
@@ -124,7 +213,16 @@ namespace VisionStudyDemo.ViewModels
             TestCommand = AsyncCommand.Create(TestAsync);
             SelectImageCommand = new DelegateCommand(SelectImage);
             ConvertToGrayCommand = new DelegateCommand(ShowLoadedGray, () => _loadedOriginal != null);
+            // 尚未选择图片时，二值化按钮自动禁用。
+            ConvertToBinaryCommand = new DelegateCommand(ShowLoadedBinary, () => _loadedOriginal != null);
+            MeanFilterCommand = new DelegateCommand(ShowLoadedMean, () => _loadedOriginal != null);
+            MeanBinaryCommand = new DelegateCommand(ShowLoadedMeanBinary, () => _loadedOriginal != null);
+            MedianFilterCommand = new DelegateCommand(ShowLoadedMedian, () => _loadedOriginal != null);
+            MedianBinaryCommand = new DelegateCommand(ShowLoadedMedianBinary, () => _loadedOriginal != null);
             ShowLoadedOriginalCommand = new DelegateCommand(ShowLoadedOriginal, () => _loadedOriginal != null);
+            SelectRoiCommand = new DelegateCommand(StartRoiSelection, () => _loadedOriginal != null);
+            RoiBinaryCommand = new DelegateCommand(ShowRoiBinary, () => _loadedOriginal != null && _photoRoi != null);
+            ClearRoiCommand = new DelegateCommand(ClearPhotoRoi);
         }
 
         /// <summary>选择文件；取消时保持当前图像。</summary>
@@ -158,7 +256,13 @@ namespace VisionStudyDemo.ViewModels
             _loadedOriginal = image;
             _loadedFileName = System.IO.Path.GetFileName(path);
             ConvertToGrayCommand.RaiseCanExecuteChanged();
+            ConvertToBinaryCommand.RaiseCanExecuteChanged();
+            MeanFilterCommand.RaiseCanExecuteChanged();
+            MeanBinaryCommand.RaiseCanExecuteChanged();
+            MedianFilterCommand.RaiseCanExecuteChanged();
+            MedianBinaryCommand.RaiseCanExecuteChanged();
             ShowLoadedOriginalCommand.RaiseCanExecuteChanged();
+            SelectRoiCommand.RaiseCanExecuteChanged();
             ShowLoadedOriginal();
         }
 
@@ -174,8 +278,54 @@ namespace VisionStudyDemo.ViewModels
                 DisplayPhoto(ImageFileLoader.ToGray(_loadedOriginal), "灰度图");
         }
 
+        /// <summary>原图 → 灰度 → 一次 3×3 均值滤波。重复点击不会累计模糊。</summary>
+        private void ShowLoadedMean()
+        {
+            if (_loadedOriginal == null) return;
+            DisplayPhoto(ImageFileLoader.MeanFilter3x3(_loadedOriginal), "全图 3×3 均值滤波");
+        }
+
+        /// <summary>整张原图 → 灰度 → 一次中值滤波，重复点击不累计处理。</summary>
+        private void ShowLoadedMedian()
+        {
+            if (_loadedOriginal == null) return;
+            DisplayPhoto(ImageFileLoader.MedianFilter3x3(_loadedOriginal), "全图 3×3 中值滤波");
+        }
+
+        /// <summary>中值滤波后再按阈值 100 二值化，便于与其他按钮对比。</summary>
+        private void ShowLoadedMedianBinary()
+        {
+            if (_loadedOriginal == null) return;
+            BitmapSource filtered = ImageFileLoader.MedianFilter3x3(_loadedOriginal);
+            DisplayPhoto(ImageFileLoader.ToBinary(filtered, 100), "全图中值滤波后二值化（灰度 < 100 为白）");
+            ImageScalingMode = BitmapScalingMode.NearestNeighbor;
+        }
+
+        /// <summary>先在灰度图上滤波，再二值化；可与普通二值化按钮对比。</summary>
+        private void ShowLoadedMeanBinary()
+        {
+            if (_loadedOriginal == null) return;
+            BitmapSource filtered = ImageFileLoader.MeanFilter3x3(_loadedOriginal);
+            DisplayPhoto(ImageFileLoader.ToBinary(filtered, 100), "全图均值滤波后二值化（灰度 < 100 为白）");
+            ImageScalingMode = BitmapScalingMode.NearestNeighbor;
+        }
+
+        /// <summary>照片实验：每次从保存的原图计算，避免对上一次黑白结果重复处理。</summary>
+        private void ShowLoadedBinary()
+        {
+            if (_loadedOriginal == null)
+                return;
+
+            const int threshold = 100; // 学习时可修改这里，对比不同阈值的结果。
+            BitmapSource binary = ImageFileLoader.ToBinary(_loadedOriginal, threshold);
+            DisplayPhoto(binary, $"二值图（灰度 < {threshold} 为白，其余为黑）");
+            // 黑白图使用最近邻显示，避免缩放插值产生额外的灰色边缘。
+            ImageScalingMode = BitmapScalingMode.NearestNeighbor;
+        }
+
         private void DisplayPhoto(BitmapSource image, string description)
         {
+            ClearPhotoRoi();
             ClearRegionBox();
             ImageStretch = Stretch.Uniform; // 照片等比例显示，避免杯子被拉伸
             ImageScalingMode = BitmapScalingMode.HighQuality;
@@ -351,6 +501,7 @@ namespace VisionStudyDemo.ViewModels
         /// <summary>统一显示出口：一维像素数组转换为 WPF 图像。</summary>
         private void DisplayImage(byte[] pixels, byte[,] gray)
         {
+            ClearPhotoRoi();
             ClearRegionBox();
             ImageStretch = Stretch.Fill;
             ImageScalingMode = BitmapScalingMode.NearestNeighbor;

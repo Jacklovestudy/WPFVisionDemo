@@ -8,6 +8,21 @@ void Equal<T>(IEnumerable<T> actual, params T[] expected)
     checks++;
 }
 
+// 均值滤波：中心除以 9、边缘除以 6、角落除以 4；输入不能被覆盖。
+byte[,] impulse = { { 10, 10, 10 }, { 10, 100, 10 }, { 10, 10, 10 } };
+// 中值：孤立亮点消失，边界偶数个取中间两值平均，不修改原数组。
+Equal<byte>(GrayImageProcessor.Flatten(GrayImageProcessor.MedianFilter3x3(impulse)), 10,10,10,10,10,10,10,10,10);
+Equal<byte>(GrayImageProcessor.Flatten(GrayImageProcessor.MedianFilter3x3(new byte[,] { { 10,20 }, { 40,50 } })), 30,30,30,30);
+Equal<byte>(GrayImageProcessor.Flatten(GrayImageProcessor.MedianFilter3x3(new byte[,] { { 10,20,30 }, { 40,50,60 }, { 70,80,90 } })), 30,35,40,45,50,55,60,65,70);
+Equal<byte>(GrayImageProcessor.Flatten(GrayImageProcessor.MedianFilter3x3(new byte[,] { { 255 } })), 255);
+Equal<byte>(GrayImageProcessor.Flatten(GrayImageProcessor.MedianFilter3x3(new byte[,] { { 0,31,90 } })), 15,31,60);
+Equal<byte>(GrayImageProcessor.Flatten(GrayImageProcessor.MedianFilter3x3(new byte[,] { { 100,100,100 }, { 100,0,100 }, { 100,100,100 } })), 100,100,100,100,100,100,100,100,100);
+Equal<byte>(GrayImageProcessor.Flatten(GrayImageProcessor.MeanFilter3x3(impulse)),
+    32, 25, 32, 25, 20, 25, 32, 25, 32);
+Equal<byte>(GrayImageProcessor.Flatten(impulse), 10, 10, 10, 10, 100, 10, 10, 10, 10);
+Equal<byte>(GrayImageProcessor.Flatten(GrayImageProcessor.MeanFilter3x3(new byte[,] { { 30 } })), 30);
+Equal<byte>(GrayImageProcessor.Flatten(GrayImageProcessor.MeanFilter3x3(new byte[,] { { 0, 30, 90 } })), 15, 40, 60);
+
 byte[,] sample =
 {
     { 220, 220, 220, 220, 0 },

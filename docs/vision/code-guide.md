@@ -1,5 +1,24 @@
 # 实验代码阅读顺序
 
+## 真实照片 ROI 实验
+
+1. 选择照片，点击“框选 ROI”，界面切回原始彩色照片。
+2. 在照片内部按住鼠标左键拖动，覆盖杯身和杯把，松开完成。蓝色矩形表示检查范围。
+3. 点击“ROI 二值化（100）”，只裁剪并处理选区，显示独立的小图。
+4. 重新选择范围时再次点击“框选 ROI”。Esc 或“清除 ROI”取消选择。
+
+每次显示照片的其他版本、切换数组实验或加载新图时清除旧 ROI，防止把原图坐标套用到裁剪小图上。
+
+代码分工：
+
+- `MainWindow.xaml.cs`：鼠标按下、移动、松开和鼠标捕获。
+- `BeginRoiDrag` / `UpdateRoiDrag` / `CompleteRoiDrag`：选区状态、过小范围处理和坐标记录。
+- `RoiCoordinates`：扣除 Uniform 显示的留白，将显示位置换算成原图像素；支持反向拖动和边界限制。
+- `ShowRoiBinary`：从保存的原图裁剪，再调用 `ToBinary`。阈值固定为 100，尚未自动识别杯子。
+
+WPF Point.X、Int32Rect.X 是横向（列），Y 是纵向（行）；这与数组实验中 x 表示行的命名要区分。
+选区只是矩形检查范围，不是杯子轮廓，杯把孔中的背景仍需后续算法判断。
+
 ## 先看 ViewModel 中的实验入口
 
 打开 `VisionStudyDemo/ViewModels/MainWindowViewModel.cs`，从 `TestAsync` 开始。
