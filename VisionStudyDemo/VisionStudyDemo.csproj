@@ -9,6 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="WPF-UI" Version="4.3.0" />
     <PackageReference Include="Prism.DryIoc" Version="9.0.537" />
   </ItemGroup>
 

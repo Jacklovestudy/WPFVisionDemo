@@ -1,46 +1,34 @@
-﻿<Window x:Class="VisionStudyDemo.MainWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:prism="http://prismlibrary.com/"
-        prism:ViewModelLocator.AutoWireViewModel="True"
-        mc:Ignorable="d"
-        Title="{Binding Title}" Height="650" Width="900" MinWidth="600" MinHeight="500">
+<Window x:Class="VisionStudyDemo.MainWindow"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:prism="http://prismlibrary.com/"
+ xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+ prism:ViewModelLocator.AutoWireViewModel="True"
+ Title="{Binding Title}" Width="1200" Height="920" MinWidth="960" MinHeight="740"
+ Background="#101010" Foreground="#F2F2F2" FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="14">
+ <Window.Resources>
+  <Style TargetType="TabItem" BasedOn="{StaticResource {x:Type TabItem}}">
+   <Setter Property="Foreground" Value="#E0E0E0"/>
+   <Setter Property="Padding" Value="16,10"/>
+  </Style>
+ </Window.Resources>
+ <Grid Margin="20,12,20,16" Background="#101010">
+  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="244"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+  <Grid Margin="0,0,0,14">
+   <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+   <StackPanel><TextBlock Text="视觉学习工作台" FontSize="24" FontWeight="SemiBold"/><TextBlock Text="加载 · 处理 · 测量" Foreground="#B8B8B8" Margin="0,3,0,0"/></StackPanel>
+   <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"><ui:Button Content="选择图片" Command="{Binding SelectImageCommand}" Appearance="Primary" Margin="0,0,8,8" Padding="14,8"/><Button Content="显示原图" Command="{Binding ShowLoadedOriginalCommand}" Margin="0,0,8,8" Padding="14,8"/></StackPanel>
+  </Grid>
+  <!-- Tab 只组织操作，共享同一个 ViewModel 和图像，不触发计算或重置选择。 -->
+  <TabControl x:Name="ModuleTabs" Grid.Row="1" Background="#1B1B1B" BorderBrush="#383838" BorderThickness="1" Padding="0" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"><TabItem Header="图片与 ROI"><ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="16"><StackPanel><TextBlock Text="加载图片后框选要处理的范围。选区坐标基于原图，后续预览与轮廓处理共用这个范围。" TextWrapping="Wrap" Foreground="#B8B8B8" Margin="0,0,0,10"/><WrapPanel><ui:Button Content="框选 ROI" Command="{Binding SelectRoiCommand}" Appearance="Primary" Margin="0,0,8,8" Padding="14,8"/><Button Content="ROI 二值化（100）" Command="{Binding RoiBinaryCommand}" Margin="0,0,8,8" Padding="14,8"/><Button Content="清除 ROI" Command="{Binding ClearRoiCommand}" Margin="0,0,8,8" Padding="14,8"/></WrapPanel><TextBlock Text="框选：按住鼠标左键拖动，松开完成；Esc 取消。切换上方模块不会清除已选范围。" TextWrapping="Wrap" Foreground="#B8B8B8" Margin="0,0,0,10"/></StackPanel></ScrollViewer></TabItem><TabItem Header="灰度与滤波"><ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="16"><StackPanel><TextBlock Text="各操作从加载的原图重新计算。比较滤波前后局部纹理和细小噪点的变化。" TextWrapping="Wrap" Foreground="#B8B8B8" Margin="0,0,0,10"/><WrapPanel><ui:Button Content="转灰度" Command="{Binding ConvertToGrayCommand}" Appearance="Primary" Margin="0,0,8,8" Padding="14,8"/><Button Content="均值滤波（3×3）" Command="{Binding MeanFilterCommand}" Margin="0,0,8,8" Padding="14,8"/><Button Content="中值滤波（3×3）" Command="{Binding MedianFilterCommand}" Margin="0,0,8,8" Padding="14,8"/><Button Content="边缘检测" Command="{Binding EdgeCommand}" Margin="0,0,8,8" Padding="14,8"/></WrapPanel><WrapPanel><Button Content="均值后二值化（100）" Command="{Binding MeanBinaryCommand}" Margin="0,0,8,8" Padding="14,8"/><Button Content="中值后二值化（100）" Command="{Binding MedianBinaryCommand}" Margin="0,0,8,8" Padding="14,8"/></WrapPanel></StackPanel></ScrollViewer></TabItem><TabItem Header="二值化与形态学"><ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="16"><StackPanel><TextBlock Text="灰度小于 100 为白色。开、闭运算预览会切换后续轮廓和筛选的处理方式。" TextWrapping="Wrap" Foreground="#B8B8B8" Margin="0,0,0,10"/><WrapPanel><StackPanel Margin="0,0,12,10"><TextBlock Text="邻域边长（3～15 奇数）" Margin="0,0,0,5"/><TextBox Width="145" Text="{Binding PhotoMorphologySize, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="邻域边长（3～15 奇数）"/></StackPanel><ui:Button Content="原始二值预览" Command="{Binding RawBinaryPreviewCommand}" Appearance="Primary" Margin="0,0,8,8" Padding="14,8"/><Button Content="开运算预览" Command="{Binding OpeningPreviewCommand}" Margin="0,0,8,8" Padding="14,8"/><Button Content="闭运算预览" Command="{Binding ClosingPreviewCommand}" Margin="0,0,8,8" Padding="14,8"/><Button Content="全图二值化（100）" Command="{Binding ConvertToBinaryCommand}" Margin="0,0,8,8" Padding="14,8"/></WrapPanel><TextBlock Text="{Binding MorphologyInfo}" TextWrapping="Wrap"/></StackPanel></ScrollViewer></TabItem><TabItem Header="轮廓与筛选"><ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="16"><StackPanel><WrapPanel><Button Content="提取最大区域轮廓" Command="{Binding PhotoContourCommand}" Margin="0,0,8,8" Padding="14,8"/><ui:Button Content="按条件选目标" Command="{Binding SelectTargetCommand}" Appearance="Primary" Margin="0,0,8,8" Padding="14,8"/><Button Content="下一个合格区域" Command="{Binding NextCandidateCommand}" ToolTip="循环查看面积/形状合格的区域；距离超限会标注" Margin="0,0,8,8" Padding="14,8"/><Button Content="轮廓下一步" Command="{Binding ContourNextCommand}" Margin="0,0,8,8" Padding="14,8"/></WrapPanel><WrapPanel><StackPanel Margin="0,0,12,10"><TextBlock Text="最小面积（像素）" Margin="0,0,0,5"/><TextBox Width="110" Text="{Binding FilterMinArea, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="最小面积（像素）"/></StackPanel><StackPanel Margin="0,0,12,10"><TextBlock Text="宽高比下限" Margin="0,0,0,5"/><TextBox Width="110" Text="{Binding FilterMinRatio, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="宽高比下限"/></StackPanel><StackPanel Margin="0,0,12,10"><TextBlock Text="宽高比上限" Margin="0,0,0,5"/><TextBox Width="110" Text="{Binding FilterMaxRatio, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="宽高比上限"/></StackPanel><StackPanel Margin="0,0,12,10"><TextBlock Text="填充率下限（0～1）" Margin="0,0,0,5"/><TextBox Width="130" Text="{Binding FilterMinFill, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="填充率下限（0～1）"/></StackPanel><StackPanel Margin="0,0,12,10"><TextBlock Text="预期行（空＝中心）" Margin="0,0,0,5"/><TextBox Width="130" Text="{Binding FilterExpectedRow, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="预期行（空＝中心）"/></StackPanel><StackPanel Margin="0,0,12,10"><TextBlock Text="预期列（空＝中心）" Margin="0,0,0,5"/><TextBox Width="130" Text="{Binding FilterExpectedCol, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="预期列（空＝中心）"/></StackPanel><StackPanel Margin="0,0,12,10"><TextBlock Text="最大距离（像素）" Margin="0,0,0,5"/><TextBox Width="125" Text="{Binding FilterMaxDistance, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="最大距离（像素）"/></StackPanel></WrapPanel><TextBlock Text="有 ROI 时填写选区内行列；无 ROI 时填写原图行列。预期位置留空取处理范围中心。" TextWrapping="Wrap" Foreground="#B8B8B8" Margin="0,0,0,10"/><TextBlock Text="{Binding FilterInfo}" TextWrapping="Wrap"/></StackPanel></ScrollViewer></TabItem><TabItem Header="基础演示"><ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="16"><StackPanel><TextBlock Text="用小数组观察单步变化，不需要加载照片。连续点击同一个演示按钮查看下一步。" TextWrapping="Wrap" Foreground="#B8B8B8" Margin="0,0,0,10"/><WrapPanel><ui:Button Content="数组实验" Command="{Binding TestCommand}" Appearance="Primary" Margin="0,0,8,8" Padding="14,8"/><Button Content="开运算演示" Command="{Binding OpeningDemoCommand}" Margin="0,0,8,8" Padding="14,8"/><Button Content="闭运算演示" Command="{Binding ClosingDemoCommand}" Margin="0,0,8,8" Padding="14,8"/><Button Content="轮廓追踪演示" Command="{Binding ContourDemoCommand}" Margin="0,0,8,8" Padding="14,8"/></WrapPanel></StackPanel></ScrollViewer></TabItem></TabControl>
+  <Grid Grid.Row="2" Margin="0,14,0,12">
+   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+   <TextBlock Text="图像预览" FontWeight="SemiBold" Margin="0,0,0,8"/>
+   <Border Grid.Row="1" Background="#080808" BorderBrush="#303030" BorderThickness="1" CornerRadius="6" Padding="12">
     <Grid>
-        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel>
-            <TextBlock Text="{Binding Test}" TextWrapping="Wrap" Margin="8"/>
-            <WrapPanel HorizontalAlignment="Center" Margin="0,0,0,12">
-                <Button Content="选择图片…" Padding="16,8" Margin="4" Command="{Binding SelectImageCommand}"/>
-                <Button Content="显示原图" Padding="16,8" Margin="4" Command="{Binding ShowLoadedOriginalCommand}"/>
-                <Button Content="转灰度" Padding="16,8" Margin="4" Command="{Binding ConvertToGrayCommand}"/>
-                <Button Content="边缘检测（差值 > 50）" Padding="16,8" Margin="4" Command="{Binding EdgeCommand}" ToolTip="整张原图先转灰度、均值滤波，再比较右边与下边的灰度差"/>
-                <Button Content="均值滤波（3×3）" Padding="16,8" Margin="4" Command="{Binding MeanFilterCommand}" ToolTip="对整张原图转灰度后滤波，每次只处理一次"/>
-                <Button Content="均值后二值化（100）" Padding="16,8" Margin="4" Command="{Binding MeanBinaryCommand}"/>
-                <Button Content="中值滤波（3×3）" Padding="16,8" Margin="4" Command="{Binding MedianFilterCommand}" ToolTip="整张原图转灰度后，取有效邻域中值；每次只处理一次"/>
-                <Button Content="中值后二值化（100）" Padding="16,8" Margin="4" Command="{Binding MedianBinaryCommand}"/>
-                <Button Content="二值化（100）" Padding="16,8" Margin="4" Command="{Binding ConvertToBinaryCommand}"/>
-                <Button Content="数组实验" Padding="16,8" Margin="4" Command="{Binding TestCommand}"/>
-                <Button Content="轮廓追踪演示" Padding="16,8" Margin="4" Command="{Binding ContourDemoCommand}"/>
-                <Button Content="提取照片轮廓" Padding="16,8" Margin="4" Command="{Binding PhotoContourCommand}"/>
-                <Button Content="轮廓下一步" Padding="16,8" Margin="4" Command="{Binding ContourNextCommand}"/>
-                <Button Content="开运算演示" Padding="16,8" Margin="4" Command="{Binding OpeningDemoCommand}"/>
-                <Button Content="闭运算演示" Padding="16,8" Margin="4" Command="{Binding ClosingDemoCommand}"/>
-                <Button Content="框选 ROI" Padding="16,8" Margin="4" Command="{Binding SelectRoiCommand}"/>
-                <Button Content="ROI 二值化（100）" Padding="16,8" Margin="4" Command="{Binding RoiBinaryCommand}"/>
-                <Button Content="清除 ROI" Padding="16,8" Margin="4" Command="{Binding ClearRoiCommand}"/>
-            </WrapPanel>
-            <TextBlock Text="{Binding RoiInfo}" TextWrapping="Wrap" Margin="8,0,8,8"/>
-            <!--<Image Source="{Binding GrayImage}"
-       Width="400"
-       Height="320"
-       Stretch="Fill" 
-       HorizontalAlignment="Center"
-       VerticalAlignment="Bottom"
-       RenderOptions.BitmapScalingMode="NearestNeighbor" />-->
-            <Grid x:Name="ImageStage" Width="{Binding ImageDisplayWidth}" Height="{Binding ImageDisplayHeight}"
-                  Background="#EEEEEE" Focusable="True"
+     <!-- 一起缩放图像及全部叠加层；保留原有 400×320 坐标空间。 -->
+     <Viewbox x:Name="PreviewViewport" Stretch="Uniform"><Grid x:Name="ImageStage" Width="{Binding ImageDisplayWidth}" Height="{Binding ImageDisplayHeight}"
+                  Background="#080808" Focusable="True"
                   MouseLeftButtonDown="RoiMouseDown" MouseMove="RoiMouseMove"
                   MouseLeftButtonUp="RoiMouseUp" KeyDown="RoiKeyDown" LostMouseCapture="RoiLostCapture">
                 <Grid.Style>
@@ -77,7 +65,7 @@
                    Height="{Binding BoxHeight}"
                    Stroke="Red"
                    StrokeThickness="2" />
-                    <Ellipse Canvas.Left="{Binding DotLeft}"
+                    <Ellipse x:Name="PositionDot" Canvas.Left="{Binding DotLeft}"
                              Canvas.Top="{Binding DotTop}"
                              Width="{Binding DotDiameter}"
                              Height="{Binding DotDiameter}"
@@ -87,9 +75,21 @@
                                Width="{Binding RoiBounds.Width}" Height="{Binding RoiBounds.Height}"
                                Stroke="#0078D4" StrokeThickness="2" StrokeDashArray="4,2" Fill="#180078D4"/>
                 </Canvas>
-            </Grid>
-        </StackPanel>
-        </ScrollViewer>
-     
+            </Grid></Viewbox>
+     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+      <StackPanel.Style><Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding GrayImage}" Value="{x:Null}"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></StackPanel.Style>
+      <TextBlock Text="从一张照片开始" FontSize="22" FontWeight="SemiBold" TextAlignment="Center"/>
+      <TextBlock Text="点击右上角“选择图片”，或打开“基础演示”" Foreground="#B8B8B8" Margin="0,8,0,0" TextAlignment="Center"/>
+     </StackPanel>
     </Grid>
+   </Border>
+  </Grid>
+  <Border Grid.Row="3" Background="#1B1B1B" BorderBrush="#383838" BorderThickness="1" CornerRadius="6" Padding="14,10">
+   <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="125"><StackPanel>
+    <TextBlock Text="处理结果" FontWeight="SemiBold" Margin="0,0,0,5"/>
+    <TextBlock Text="{Binding Test}" TextWrapping="Wrap"/>
+    <TextBlock Text="{Binding RoiInfo}" Foreground="#B8B8B8" TextWrapping="Wrap" Margin="0,6,0,0"/>
+   </StackPanel></ScrollViewer>
+  </Border>
+ </Grid>
 </Window>

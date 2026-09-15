@@ -6,6 +6,24 @@ namespace VisionStudyDemo.Imaging
 {
     public static class ImageFileLoader
     {
+        /// <summary>统一供照片预览、轮廓提取、筛选使用，避免预览与计算走不同流程。</summary>
+        public static BitmapSource ProcessBinary(BitmapSource source, MorphologyOperation operation, int size)
+        {
+            BitmapSource binary = ToBinary(source,100);
+            int width = binary.PixelWidth, height = binary.PixelHeight;
+            if (operation == MorphologyOperation.None) return binary;
+            byte[] pixels = new byte[checked(width*height)];
+            binary.CopyPixels(pixels,width,0);
+            byte[,] input = new byte[height,width];
+            for(int x=0;x<height;x++)
+                for(int y=0;y<width;y++) input[x,y]=pixels[x*width+y];
+            byte[,] processed = BinaryMorphology.Apply(input,operation,size);
+            var result = BitmapSource.Create(width,height,96,96,PixelFormats.Gray8,null,
+                GrayImageProcessor.Flatten(processed),width);
+            result.Freeze();
+            return result;
+        }
+
         /// <summary>原照片 → 灰度和 3×3 均值滤波 → 右/下灰度差 → 黑白边缘图。</summary>
         public static BitmapSource DetectEdges(BitmapSource image, int threshold)
         {

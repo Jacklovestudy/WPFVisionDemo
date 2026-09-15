@@ -6,6 +6,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../VisionStudyDemo/Imaging/BinaryMorphology.cs" Link="BinaryMorphology.cs" />
+    <Compile Include="../../VisionStudyDemo/Imaging/TargetSelector.cs" Link="TargetSelector.cs" />
     <Compile Include="../../VisionStudyDemo/Imaging/ContourTracer.cs" Link="ContourTracer.cs" />
     <Compile Include="../../VisionStudyDemo/Imaging/GrayImageProcessor.cs" Link="GrayImageProcessor.cs" />
     <Compile Include="../../VisionStudyDemo/Imaging/ConnectedRegion.cs" Link="ConnectedRegion.cs" />

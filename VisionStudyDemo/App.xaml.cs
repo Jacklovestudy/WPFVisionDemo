@@ -11,6 +11,12 @@ namespace VisionStudyDemo
     /// </summary>
     public partial class App : PrismApplication
     {
+        public App()
+        {
+            InitializeComponent();
+            // 明确设置 Fluent 强调色，独立运行和测试宿主均使用同一主题。
+            Wpf.Ui.Appearance.ApplicationAccentColorManager.Apply(System.Windows.Media.Color.FromRgb(96,165,250));
+        }
         protected override Window CreateShell()
         {
             return Container.Resolve<MainWindow>();

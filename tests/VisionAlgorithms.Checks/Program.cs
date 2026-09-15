@@ -1,6 +1,27 @@
 using VisionStudyDemo.Imaging;
 
 int checks = 0;
+ConnectedRegion RectangleRegion(int row, int col, int width, int height)
+{
+    var region = new ConnectedRegion();
+    for (int r = row; r < row + height; r++)
+        for (int c = col; c < col + width; c++) region.Pixels.Add((r,c));
+    return region;
+}
+var nearTarget = RectangleRegion(2,2,2,4);
+var largeWrong = RectangleRegion(0,10,8,2);
+var farTarget = RectangleRegion(20,2,2,4);
+var filter = new TargetCriteria(8,0.4,0.7,1,3.5,2.5,10);
+var selection = TargetSelector.Select(new[] { largeWrong,farTarget,nearTarget }, filter);
+if (!ReferenceEquals(selection.Region, nearTarget) || selection.ShapeCount != 2 || selection.DistanceCount != 1)
+    throw new Exception("Selection must filter before choosing nearest");
+checks++;
+if (TargetSelector.Select(new[] { largeWrong,farTarget },filter).Region != null)
+    throw new Exception("No match must not fall back to largest");
+checks++;
+if (TargetSelector.Select(new[] { nearTarget }, filter with { ExpectedRow = 13.5 }).Region == null)
+    throw new Exception("Distance equal to maximum must pass");
+checks++;
 void Equal<T>(IEnumerable<T> actual, params T[] expected)
 {
     if (!actual.SequenceEqual(expected))
@@ -90,4 +111,19 @@ Equal<byte>(GrayImageProcessor.FilterByArea(binary, 5, 4, 6), filtered); // 包�
 Equal(new[] { GrayImageProcessor.CountForeground(GrayImageProcessor.FilterByArea(binary, 5, 4, 7)) }, 0);
 Equal(new[] { GrayImageProcessor.CountForeground(binary) }, 7); // 筛选不修改输入
 Equal(GrayImageProcessor.GetFourConnectedRegions(new byte[6], 3, 2).Select(r => r.Area), Array.Empty<int>());
+byte[,] morphSample = new byte[11,11];
+for (int r=3;r<=7;r++) for(int c=3;c<=7;c++) morphSample[r,c]=255;
+morphSample[1,1]=255;
+var opened = BinaryMorphology.Apply(morphSample, MorphologyOperation.Open, 3);
+Equal(new[] { GrayImageProcessor.CountForeground(GrayImageProcessor.Flatten(opened)) },25);
+morphSample[1,1]=0; morphSample[5,5]=0;
+var closed = BinaryMorphology.Apply(morphSample, MorphologyOperation.Close, 3);
+Equal(new[] { GrayImageProcessor.CountForeground(GrayImageProcessor.Flatten(closed)) },25);
+Equal(new[] { (int)morphSample[5,5] },0); // 输入不变。
+Equal<byte>(GrayImageProcessor.Flatten(BinaryMorphology.Apply(new byte[,] {{255}}, MorphologyOperation.Close, 3)),255); // 边界补黑扩展，闭运算不会截掉原边缘。
+Equal<byte>(GrayImageProcessor.Flatten(BinaryMorphology.Apply(new byte[,] {{255}}, MorphologyOperation.Open, 3)),0);
+Equal(new[] { GrayImageProcessor.CountForeground(GrayImageProcessor.Flatten(BinaryMorphology.Apply(closed, MorphologyOperation.Open, 5))) },25);
+bool invalidSize=false;
+try { BinaryMorphology.Apply(closed,MorphologyOperation.Close,4); } catch(ArgumentOutOfRangeException) { invalidSize=true; }
+Equal(new[] { invalidSize },true);
 Console.WriteLine($"PASS: {checks} algorithm checks.");

@@ -11,7 +11,68 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        // 加载应用实际使用的 WPF UI 主题，验证资源及控件模板，不启动 Prism 主窗口。
+        var application = new App();
+        application.InitializeComponent();
         var vm = new MainWindowViewModel();
+        // 三个分离方块验证候选切换、循环、ROI 坐标和距离不合格提示。
+        var browseVm = new MainWindowViewModel();
+        var nextProperty = typeof(MainWindowViewModel).GetProperty("NextCandidateCommand")
+            ?? throw new Exception("Missing candidate browsing command");
+        var nextCandidate = (Prism.Commands.DelegateCommand)nextProperty.GetValue(browseVm)!;
+        if (nextCandidate.CanExecute()) throw new Exception("Browsing enabled before selection");
+        byte[] candidatePixels = Enumerable.Repeat((byte)255, 30 * 12).ToArray();
+        foreach (int col in new[] { 4, 12, 22 })
+            for (int row = 4; row < 7; row++)
+                for (int c = col; c < col + 3; c++) candidatePixels[row * 30 + c] = 0;
+        typeof(MainWindowViewModel).GetField("_loadedOriginal", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(browseVm,
+            System.Windows.Media.Imaging.BitmapSource.Create(30,12,96,96,PixelFormats.Gray8,null,candidatePixels,30));
+        typeof(MainWindowViewModel).GetField("_photoRoi", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(browseVm,new Int32Rect(2,2,26,8));
+        browseVm.FilterMinArea="1"; browseVm.FilterMinRatio="0.5"; browseVm.FilterMaxRatio="2";
+        browseVm.FilterMinFill="0.5"; browseVm.FilterMaxDistance="3";
+        browseVm.SelectTargetCommand.Execute();
+        string firstContour=string.Join(";",browseVm.PhotoContourPoints);
+        var candidateRoi=browseVm.RoiBounds;
+        if(!nextCandidate.CanExecute() || !browseVm.FilterInfo.Contains("1/3")) throw new Exception("Candidates not initialized");
+        nextCandidate.Execute();
+        string secondContour=string.Join(";",browseVm.PhotoContourPoints);
+        if(firstContour==secondContour || !browseVm.FilterInfo.Contains("距离不合格") || browseVm.RoiBounds!=candidateRoi)
+            throw new Exception("Candidate switching failed");
+        nextCandidate.Execute();
+        if(string.Join(";",browseVm.PhotoContourPoints)==secondContour) throw new Exception("Third candidate missing");
+        nextCandidate.Execute();
+        if(string.Join(";",browseVm.PhotoContourPoints)!=firstContour) throw new Exception("Candidate wrap failed");
+        browseVm.ShowLoadedOriginalCommand.Execute();
+        if(nextCandidate.CanExecute()) throw new Exception("Old candidates survived image change");
+        if (vm.ClosingPreviewCommand.CanExecute()) throw new Exception("Photo morphology enabled without image");
+        var morphPhotoVm = new MainWindowViewModel();
+        byte[] morphPhotoPixels = Enumerable.Repeat((byte)255,121).ToArray();
+        for(int r=3;r<=7;r++) for(int c=3;c<=7;c++) morphPhotoPixels[r*11+c]=0;
+        morphPhotoPixels[5*11+5]=255;
+        typeof(MainWindowViewModel).GetField("_loadedOriginal",BindingFlags.Instance|BindingFlags.NonPublic)!.SetValue(morphPhotoVm,
+            System.Windows.Media.Imaging.BitmapSource.Create(11,11,96,96,PixelFormats.Gray8,null,morphPhotoPixels,11));
+        var morphRoiField=typeof(MainWindowViewModel).GetField("_photoRoi",BindingFlags.Instance|BindingFlags.NonPublic)!;
+        morphRoiField.SetValue(morphPhotoVm,new Int32Rect(2,2,7,7));
+        int PreviewWhiteCount()
+        {
+            if(morphPhotoVm.GrayImage!.PixelWidth!=7 || morphPhotoVm.GrayImage.PixelHeight!=7)
+                throw new Exception("Morphology lost ROI dimensions");
+            byte[] values=new byte[49];
+            morphPhotoVm.GrayImage.CopyPixels(values,7,0);
+            return values.Count(v=>v==255);
+        }
+        morphPhotoVm.ClosingPreviewCommand.Execute();
+        if(PreviewWhiteCount()!=25 || !morphPhotoVm.RoiBinaryCommand.CanExecute()) throw new Exception("Close preview/ROI retention failed");
+        morphPhotoVm.RawBinaryPreviewCommand.Execute();
+        if(PreviewWhiteCount()!=24) throw new Exception("Preview accumulated changes");
+        morphPhotoVm.ClosingPreviewCommand.Execute();
+        morphPhotoVm.PhotoContourCommand.Execute();
+        if(!morphPhotoVm.Test.Contains("面积 25 ") || morphPhotoVm.PhotoContourPoints.Count!=21)
+            throw new Exception("Contour ignored active closing mode");
+        morphPhotoVm.PhotoMorphologySize="4";
+        morphPhotoVm.PhotoContourCommand.Execute();
+        if(!morphPhotoVm.Test.Contains("奇数") || morphPhotoVm.PhotoContourPoints.Count!=0)
+            throw new Exception("Invalid morphology size not rejected");
         // ROI 外的大暗块不能抢走 ROI 内的小目标；轮廓须映射回原图。
         var roiTraceVm = new MainWindowViewModel();
         byte[] roiTracePixels = Enumerable.Repeat((byte)255, 48).ToArray();
@@ -32,6 +93,25 @@ internal static class Program
                 !roiTraceVm.Test.Contains("ROI") || !roiTraceVm.Test.Contains("面积 1 "))
                 throw new Exception("ROI contour selection or coordinate offset incorrect");
         }
+        roiTraceVm.FilterMinArea = "1";
+        roiTraceVm.FilterMinRatio = "1";
+        roiTraceVm.FilterMaxRatio = "1";
+        roiTraceVm.FilterMinFill = "1";
+        roiTraceVm.FilterMaxDistance = "0"; // ROI 中心正好是目标质心。
+        roiTraceVm.SelectTargetCommand.Execute();
+        if (roiTraceVm.PhotoContourPoints.Count != 5 || !roiTraceVm.Test.Contains("最近合格目标"))
+            throw new Exception("Filtered target must use ROI local expected coordinates");
+        roiTraceVm.FilterMinArea = "2";
+        roiTraceVm.SelectTargetCommand.Execute();
+        if (roiTraceVm.PhotoContourPoints.Count != 0 || !roiTraceVm.Test.Contains("未找到"))
+            throw new Exception("Failed filters must clear previous target");
+        roiTraceVm.FilterMinArea = "invalid";
+        roiTraceVm.SelectTargetCommand.Execute();
+        if (!roiTraceVm.Test.Contains("参数无效")) throw new Exception("Invalid input silently reused old value");
+        roiTraceVm.FilterMinArea = "1";
+        roiTraceVm.FilterExpectedRow = "100";
+        roiTraceVm.SelectTargetCommand.Execute();
+        if (!roiTraceVm.Test.Contains("参数无效")) throw new Exception("Out of range expected position accepted");
         selectionField.SetValue(roiTraceVm, new Int32Rect(6,0,2,2));
         roiTraceVm.PhotoContourCommand.Execute();
         if (roiTraceVm.PhotoContourPoints.Count != 0 || roiTraceVm.ContourNextCommand.CanExecute())
@@ -154,6 +234,8 @@ internal static class Program
         if (binaryMean.Any(value => value != 255)) throw new Exception("Mean then threshold failed");
         // 加载真实 XAML，但不显示窗口、不干扰正在运行的学习程序。
         var window = new MainWindow { DataContext = vm };
+        var moduleTabs = (TabControl?)window.FindName("ModuleTabs") ?? throw new Exception("Missing module tabs");
+        if (moduleTabs.Items.Count != 5) throw new Exception("Expected five functional modules");
         var content = (FrameworkElement)window.Content;
         content.Measure(new Size(800, 600));
         content.Arrange(new Rect(0, 0, 800, 600));
@@ -163,7 +245,7 @@ internal static class Program
         void CheckDot(double? centerLeft, double? centerTop)
         {
             content.UpdateLayout();
-            var dot = FindEllipse(content) ?? throw new Exception("Missing centroid dot");
+            var dot = (Ellipse?)window.FindName("PositionDot") ?? throw new Exception("Missing centroid dot");
             if (centerLeft == null)
             {
                 if (dot.Visibility != Visibility.Collapsed)
@@ -304,7 +386,8 @@ internal static class Program
             roiOutput.CopyPixels(actualRoiPixels, 600, 0);
             expectedRoi.CopyPixels(expectedRoiPixels, 600, 0);
             if (!actualRoiPixels.SequenceEqual(expectedRoiPixels)) throw new Exception("ROI crop pixel mismatch");
-            if (vm.IsSelectingRoi || vm.RoiBinaryCommand.CanExecute()) throw new Exception("ROI overlay remains on cropped view");
+            if (vm.IsSelectingRoi || !vm.RoiBinaryCommand.CanExecute() || vm.RoiBounds.Width != 0)
+                throw new Exception("Cropped preview must retain ROI without drawing old overlay");
             checks++;
 
             vm.SelectRoiCommand.Execute();
@@ -338,6 +421,55 @@ internal static class Program
             if (portraitBounds != new Rect(120,0,160,320)) throw new Exception("Portrait letterbox mapping incorrect");
             checks++;
             Console.WriteLine("ROI verified: letterbox, reverse drag, crop pixels, bounds, click, cancel, reload, portrait.");
+        }
+        // 切换 Tab 只改变操作面板，不能清除图片、ROI 或用户输入。
+        content.Measure(new Size(1160,820));
+        content.Arrange(new Rect(0,0,1160,820));
+        moduleTabs.SelectedIndex=3;
+        content.UpdateLayout();
+        IEnumerable<DependencyObject> Descendants(DependencyObject parent)
+        {
+            yield return parent;
+            for(int i=0;i<VisualTreeHelper.GetChildrenCount(parent);i++)
+                foreach(var child in Descendants(VisualTreeHelper.GetChild(parent,i))) yield return child;
+        }
+        var ratioInput=Descendants(content).OfType<TextBox>().First(t =>
+            t.GetBindingExpression(TextBox.TextProperty)?.ParentBinding.Path.Path == "FilterMinRatio");
+        ratioInput.Text="0.25";
+        ratioInput.GetBindingExpression(TextBox.TextProperty)!.UpdateSource();
+        var sharedImage=vm.GrayImage;
+        var savedRoi=vm.RoiBounds;
+        for(int i=0;i<5;i++)
+        {
+            moduleTabs.SelectedIndex=i;
+            content.UpdateLayout();
+            if(!ReferenceEquals(sharedImage,vm.GrayImage) || vm.RoiBounds!=savedRoi || vm.FilterMinRatio!="0.25")
+                throw new Exception("Module switch changed shared state");
+        }
+        moduleTabs.SelectedIndex=3;
+        content.UpdateLayout();
+        if(!Descendants(content).OfType<TextBox>().Any(t=>t.Text=="0.25"))
+            throw new Exception("Parameter input lost when returning to tab");
+        checks++;
+        // 可选：渲染真实 WPF 控件到图片，人工检查布局，不弹出或中断用户窗口。
+        string? snapshotDir=Environment.GetEnvironmentVariable("VISION_UI_SNAPSHOT_DIR");
+        if(!string.IsNullOrWhiteSpace(snapshotDir))
+        {
+            System.IO.Directory.CreateDirectory(snapshotDir);
+            foreach(var layout in new[] { (Width:1160,Height:820), (Width:920,Height:650) })
+                for(int tab=0;tab<5;tab++)
+                {
+                    moduleTabs.SelectedIndex=tab;
+                    content.Measure(new Size(layout.Width,layout.Height));
+                    content.Arrange(new Rect(0,0,layout.Width,layout.Height));
+                    content.UpdateLayout();
+                    var bitmap=new System.Windows.Media.Imaging.RenderTargetBitmap(layout.Width,layout.Height,96,96,PixelFormats.Pbgra32);
+                    bitmap.Render(content);
+                    var encoder=new System.Windows.Media.Imaging.PngBitmapEncoder();
+                    encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+                    using var output=System.IO.File.Create(System.IO.Path.Combine(snapshotDir,$"tab-{tab}-{layout.Width}.png"));
+                    encoder.Save(output);
+                }
         }
         window.Close();
         Console.WriteLine($"PASS: {checks} WPF box scenarios (ViewModel + XAML bindings).");
