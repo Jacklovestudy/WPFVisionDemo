@@ -8,7 +8,36 @@ void Equal<T>(IEnumerable<T> actual, params T[] expected)
     checks++;
 }
 
+var singleRegion = new ConnectedRegion();
+singleRegion.Pixels.Add((2,3));
+Equal(ContourTracer.TraceOuterContour(singleRegion), (2,3),(2,4),(3,4),(3,3),(2,3));
+var ringRegion = new ConnectedRegion();
+for (int r = 0; r < 3; r++)
+    for (int c = 0; c < 3; c++)
+        if (r != 1 || c != 1) ringRegion.Pixels.Add((r,c));
+var ringContour = ContourTracer.TraceOuterContour(ringRegion);
+Equal(new[] { ringContour.Count, ringContour.Distinct().Count() }, 13,12);
+Equal(new[] { ringContour[0], ringContour[^1] }, (0,0),(0,0));
+var concave = new ConnectedRegion();
+concave.Pixels.AddRange(new[] { (0,0),(1,0),(1,1) });
+Equal(new[] { ContourTracer.TraceOuterContour(concave).Count }, 9);
+Equal(ContourTracer.TraceOuterContour(new ConnectedRegion()), Array.Empty<(int,int)>());
+
+// 右/下差分：两个方向、阈值相等、单像素和末行末列都要正确。
+Equal<byte>(GrayImageProcessor.Flatten(GrayImageProcessor.DetectEdges(new byte[,] { { 100,110 }, { 200,200 } }, 50)), 255,255,0,0);
+Equal<byte>(GrayImageProcessor.Flatten(GrayImageProcessor.DetectEdges(new byte[,] { { 200,40,90 } }, 50)), 255,0,0);
+Equal<byte>(GrayImageProcessor.Flatten(GrayImageProcessor.DetectEdges(new byte[,] { { 200 }, { 40 }, { 90 } }, 50)), 255,0,0);
+Equal<byte>(GrayImageProcessor.Flatten(GrayImageProcessor.DetectEdges(new byte[,] { { 255 } }, 50)), 0);
+
 // 均值滤波：中心除以 9、边缘除以 6、角落除以 4；输入不能被覆盖。
+byte[,] dot = new byte[5,5];
+dot[2,2] = 255;
+var expanded = GrayImageProcessor.Dilate3x3(dot);
+Equal(new[] { GrayImageProcessor.CountForeground(GrayImageProcessor.Flatten(expanded)) }, 9);
+Equal<byte>(GrayImageProcessor.Flatten(GrayImageProcessor.Erode3x3(expanded)), GrayImageProcessor.Flatten(dot));
+Equal(new[] { GrayImageProcessor.CountForeground(GrayImageProcessor.Flatten(dot)) }, 1);
+Equal<byte>(GrayImageProcessor.Flatten(GrayImageProcessor.Erode3x3(new byte[,] { { 255 } })), 0);
+Equal<byte>(GrayImageProcessor.Flatten(GrayImageProcessor.Dilate3x3(new byte[,] { { 0 } })), 0);
 byte[,] impulse = { { 10, 10, 10 }, { 10, 100, 10 }, { 10, 10, 10 } };
 // 中值：孤立亮点消失，边界偶数个取中间两值平均，不修改原数组。
 Equal<byte>(GrayImageProcessor.Flatten(GrayImageProcessor.MedianFilter3x3(impulse)), 10,10,10,10,10,10,10,10,10);

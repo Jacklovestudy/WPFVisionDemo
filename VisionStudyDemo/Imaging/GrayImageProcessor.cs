@@ -6,6 +6,75 @@ namespace VisionStudyDemo.Imaging
     /// </summary>
     public static class GrayImageProcessor
     {
+        /// <summary>学习版边缘检测：右方或下方灰度差严格大于阈值，就标为白色。</summary>
+        public static byte[,] DetectEdges(byte[,] gray, int threshold)
+        {
+            ArgumentNullException.ThrowIfNull(gray);
+            if (threshold < 0 || threshold > 255)
+                throw new ArgumentOutOfRangeException(nameof(threshold));
+            int height = gray.GetLength(0), width = gray.GetLength(1);
+            byte[,] result = new byte[height, width];
+            for (int x = 0; x < height; x++) // x 行，y 列。
+                for (int y = 0; y < width; y++)
+                {
+                    int current = gray[x, y];
+                    int rightDiff = 0, downDiff = 0;
+                    // 最后一列没有右邻居，就不做这个方向的比较。
+                    if (y + 1 < width)
+                        rightDiff = Math.Abs(current - gray[x, y + 1]);
+                    // 最后一行没有下邻居；仍可检查有效的右邻居。
+                    if (x + 1 < height)
+                        downDiff = Math.Abs(current - gray[x + 1, y]);
+                    // 阈值比较的是差值，不是像素本身的灰度。等于阈值不标记。
+                    result[x, y] = rightDiff > threshold || downDiff > threshold
+                        ? (byte)255 : (byte)0;
+                }
+            return result; // 读原图、写新图；右下角无可比邻居，保持黑色。
+        }
+
+        /// <summary>二值膨胀：3×3 内只要有一个 255，中心输出 255。图片外按黑色。</summary>
+        public static byte[,] Dilate3x3(byte[,] binary)
+        {
+            ArgumentNullException.ThrowIfNull(binary);
+            int height = binary.GetLength(0), width = binary.GetLength(1);
+            byte[,] result = new byte[height, width]; // 新图默认全黑。
+            for (int x = 0; x < height; x++) // x 行，y 列。
+                for (int y = 0; y < width; y++)
+                    for (int row = x - 1; row <= x + 1; row++)
+                        for (int col = y - 1; col <= y + 1; col++)
+                        {
+                            if (row < 0 || row >= height || col < 0 || col >= width)
+                                continue;
+                            // 始终检查原图，不读取本轮刚扩出的白色。
+                            if (binary[row, col] == 255)
+                                result[x, y] = 255;
+                        }
+            return result;
+        }
+
+        /// <summary>二值腐蚀：3×3 必须全部为 255，中心才输出白色。图片外按黑色。</summary>
+        public static byte[,] Erode3x3(byte[,] binary)
+        {
+            ArgumentNullException.ThrowIfNull(binary);
+            int height = binary.GetLength(0), width = binary.GetLength(1);
+            byte[,] result = new byte[height, width];
+            for (int x = 0; x < height; x++)
+                for (int y = 0; y < width; y++)
+                {
+                    bool allWhite = true; // 每换一个中心，重新判断邻域。
+                    for (int row = x - 1; row <= x + 1; row++)
+                        for (int col = y - 1; col <= y + 1; col++)
+                        {
+                            // || 短路：越界时不会访问数组；外部黑色也导致腐蚀。
+                            if (row < 0 || row >= height || col < 0 || col >= width ||
+                                binary[row, col] != 255)
+                                allWhite = false;
+                        }
+                    result[x, y] = allWhite ? (byte)255 : (byte)0;
+                }
+            return result;
+        }
+
         /// <summary>
         /// 3×3 中值滤波：收集有效邻域灰度，排序后取中值。
         /// 越界跳过；偶数个取中间两值的平均，整数除法舍去小数。

@@ -13,6 +13,31 @@ namespace VisionStudyDemo.ViewModels
     public class MainWindowViewModel : BindableBase
     {
         public ICommand TestCommand { get; }
+        public DelegateCommand ContourDemoCommand { get; }
+        public DelegateCommand PhotoContourCommand { get; }
+        public DelegateCommand ContourNextCommand { get; }
+        private List<(int Row, int Col)> _photoContour = new();
+        private int _photoContourIndex;
+        private int _photoContourArea;
+        private string _photoContourScope = "全图";
+        private string _photoContourWarning = "";
+        private PointCollection _photoContourPoints = new();
+        public PointCollection PhotoContourPoints
+        {
+            get => _photoContourPoints;
+            private set => SetProperty(ref _photoContourPoints, value);
+        }
+        private int _traceStep = -1;
+        private Visibility _traceVisibility = Visibility.Collapsed;
+        public Visibility TraceVisibility
+        {
+            get => _traceVisibility;
+            private set => SetProperty(ref _traceVisibility, value);
+        }
+        public DelegateCommand OpeningDemoCommand { get; }
+        public DelegateCommand ClosingDemoCommand { get; }
+        private string? _morphologyMode;
+        private int _morphologyStep = -1;
         public DelegateCommand SelectImageCommand { get; }
         public DelegateCommand ConvertToGrayCommand { get; }
         public DelegateCommand ConvertToBinaryCommand { get; }
@@ -20,6 +45,7 @@ namespace VisionStudyDemo.ViewModels
         public DelegateCommand MeanBinaryCommand { get; }
         public DelegateCommand MedianFilterCommand { get; }
         public DelegateCommand MedianBinaryCommand { get; }
+        public DelegateCommand EdgeCommand { get; }
         public DelegateCommand ShowLoadedOriginalCommand { get; }
         private BitmapSource? _loadedOriginal;
         private string _loadedFileName = "";
@@ -90,7 +116,7 @@ namespace VisionStudyDemo.ViewModels
             _photoRoi = roi;
             RoiBounds = RoiCoordinates.ToDisplay(roi, _roiImageBounds,
                 _loadedOriginal.PixelWidth, _loadedOriginal.PixelHeight);
-            RoiInfo = $"原图 ROI：起始行 {roi.Y}，起始列 {roi.X}，宽 {roi.Width}，高 {roi.Height}。可重新拖动或点击 ROI 二值化。";
+            RoiInfo = $"原图 ROI：起始行 {roi.Y}，起始列 {roi.X}，宽 {roi.Width}，高 {roi.Height}。可点击“提取照片轮廓”只处理框内区域，或点击 ROI 二值化。";
             RoiBinaryCommand.RaiseCanExecuteChanged();
         }
 
@@ -211,6 +237,12 @@ namespace VisionStudyDemo.ViewModels
         public MainWindowViewModel()
         {
             TestCommand = AsyncCommand.Create(TestAsync);
+            ContourDemoCommand = new DelegateCommand(ShowContourDemo);
+            PhotoContourCommand = new DelegateCommand(ShowPhotoContour, () => _loadedOriginal != null);
+            ContourNextCommand = new DelegateCommand(AdvancePhotoContour,
+                () => _photoContourIndex + 1 < _photoContour.Count);
+            OpeningDemoCommand = new DelegateCommand(() => ShowMorphologyDemo(true));
+            ClosingDemoCommand = new DelegateCommand(() => ShowMorphologyDemo(false));
             SelectImageCommand = new DelegateCommand(SelectImage);
             ConvertToGrayCommand = new DelegateCommand(ShowLoadedGray, () => _loadedOriginal != null);
             // 尚未选择图片时，二值化按钮自动禁用。
@@ -219,6 +251,7 @@ namespace VisionStudyDemo.ViewModels
             MeanBinaryCommand = new DelegateCommand(ShowLoadedMeanBinary, () => _loadedOriginal != null);
             MedianFilterCommand = new DelegateCommand(ShowLoadedMedian, () => _loadedOriginal != null);
             MedianBinaryCommand = new DelegateCommand(ShowLoadedMedianBinary, () => _loadedOriginal != null);
+            EdgeCommand = new DelegateCommand(ShowLoadedEdges, () => _loadedOriginal != null);
             ShowLoadedOriginalCommand = new DelegateCommand(ShowLoadedOriginal, () => _loadedOriginal != null);
             SelectRoiCommand = new DelegateCommand(StartRoiSelection, () => _loadedOriginal != null);
             RoiBinaryCommand = new DelegateCommand(ShowRoiBinary, () => _loadedOriginal != null && _photoRoi != null);
@@ -261,6 +294,8 @@ namespace VisionStudyDemo.ViewModels
             MeanBinaryCommand.RaiseCanExecuteChanged();
             MedianFilterCommand.RaiseCanExecuteChanged();
             MedianBinaryCommand.RaiseCanExecuteChanged();
+            EdgeCommand.RaiseCanExecuteChanged();
+            PhotoContourCommand.RaiseCanExecuteChanged();
             ShowLoadedOriginalCommand.RaiseCanExecuteChanged();
             SelectRoiCommand.RaiseCanExecuteChanged();
             ShowLoadedOriginal();
@@ -290,6 +325,17 @@ namespace VisionStudyDemo.ViewModels
         {
             if (_loadedOriginal == null) return;
             DisplayPhoto(ImageFileLoader.MedianFilter3x3(_loadedOriginal), "全图 3×3 中值滤波");
+        }
+
+        /// <summary>每次从原照片计算一次，不在旧的黑白边缘图上重复处理。</summary>
+        private void ShowLoadedEdges()
+        {
+            if (_loadedOriginal == null) return;
+            const int threshold = 20; // 相邻灰度差的阈值，可降低它观察更多弱边缘。
+            DisplayPhoto(ImageFileLoader.DetectEdges(_loadedOriginal, threshold),
+                $"全图边缘：均值滤波后，右/下灰度差 > {threshold} 为白");
+            ImageScalingMode = BitmapScalingMode.NearestNeighbor;
+            RoiInfo = "白色表示明暗变化明显的位置，可能来自轮廓、文字、反光或纹理；不是完整物体识别。";
         }
 
         /// <summary>中值滤波后再按阈值 100 二值化，便于与其他按钮对比。</summary>
@@ -325,6 +371,10 @@ namespace VisionStudyDemo.ViewModels
 
         private void DisplayPhoto(BitmapSource image, string description)
         {
+            ClearPhotoContour();
+            _traceStep = -1;
+            TraceVisibility = Visibility.Collapsed;
+            _morphologyMode = null; // 切换图片后，下次演示从原图开始。
             ClearPhotoRoi();
             ClearRegionBox();
             ImageStretch = Stretch.Uniform; // 照片等比例显示，避免杯子被拉伸
@@ -501,6 +551,10 @@ namespace VisionStudyDemo.ViewModels
         /// <summary>统一显示出口：一维像素数组转换为 WPF 图像。</summary>
         private void DisplayImage(byte[] pixels, byte[,] gray)
         {
+            ClearPhotoContour();
+            _traceStep = -1;
+            TraceVisibility = Visibility.Collapsed;
+            _morphologyMode = null;
             ClearPhotoRoi();
             ClearRegionBox();
             ImageStretch = Stretch.Fill;
@@ -516,6 +570,173 @@ namespace VisionStudyDemo.ViewModels
                 width);               // stride：紧密排列的一行占 width 字节
         }
         #endregion
+
+        private void ClearPhotoContour()
+        {
+            _photoContour = new();
+            _photoContourIndex = 0;
+            PhotoContourPoints = new PointCollection();
+            ContourNextCommand.RaiseCanExecuteChanged();
+        }
+
+        /// <summary>有 ROI 时只在框内找最大白色区域，轮廓最终叠加回完整原图。</summary>
+        private void ShowPhotoContour()
+        {
+            if (_loadedOriginal == null) return;
+            const int threshold = 100; // 与照片二值化规则一致：小于 100 为白。
+            // 显示入口会清除选择，必须先保存本次 ROI；裁剪始终来自原图。
+            Int32Rect? selectedRoi = _photoRoi;
+            BitmapSource source = _loadedOriginal;
+            if (selectedRoi is Int32Rect selected)
+            {
+                source = new CroppedBitmap(_loadedOriginal, selected);
+                source.Freeze();
+            }
+            BitmapSource binary = ImageFileLoader.ToBinary(source, threshold);
+            int width = binary.PixelWidth, height = binary.PixelHeight;
+            byte[] pixels = new byte[checked(width * height)];
+            binary.CopyPixels(pixels, width, 0);
+            var region = GrayImageProcessor.GetFourConnectedRegions(pixels, width, height)
+                .OrderByDescending(r => r.Area).FirstOrDefault();
+            // 先显示原图并清除旧状态，避免将旧轮廓叠到新照片上。
+            DisplayPhoto(_loadedOriginal, "照片外轮廓");
+            Rect bounds = RoiCoordinates.GetImageBounds(_loadedOriginal,
+                new Size(ImageDisplayWidth, ImageDisplayHeight));
+            _photoContourScope = selectedRoi is Int32Rect scope
+                ? $"ROI（起始行 {scope.Y}、列 {scope.X}，{scope.Width}×{scope.Height}）" : "全图（未框选 ROI）";
+            _photoContourWarning = "";
+            if (selectedRoi is Int32Rect restored)
+            {
+                // 保留蓝色选框和选择，重复提取仍然处理同一 ROI。
+                _photoRoi = restored;
+                RoiBounds = RoiCoordinates.ToDisplay(restored, bounds,
+                    _loadedOriginal.PixelWidth, _loadedOriginal.PixelHeight);
+                RoiBinaryCommand.RaiseCanExecuteChanged();
+            }
+            if (region == null)
+            {
+                Test = $"{_photoContourScope}：灰度 < 100 的白色前景为空，没有可追踪的轮廓。";
+                RoiInfo = "可以重新框选或调整阈值；ROI 内没有目标时不会改为提取全图。";
+                return;
+            }
+            int offsetRow = selectedRoi?.Y ?? 0;
+            int offsetCol = selectedRoi?.X ?? 0;
+            // 裁剪后追踪得到小图坐标，加上 ROI 起点才是原图坐标。
+            _photoContour = ContourTracer.TraceOuterContour(region)
+                .Select(p => (Row: p.Row + offsetRow, Col: p.Col + offsetCol)).ToList();
+            if (selectedRoi != null && (region.MinRow == 0 || region.MinCol == 0 ||
+                region.MaxRow == height - 1 || region.MaxCol == width - 1))
+                _photoContourWarning = "目标接触选框边缘，轮廓可能包含裁剪边界；可扩大选区。";
+            _photoContourArea = region.Area;
+            // Uniform 显示会留白，映射时必须加上真实图像区域的偏移。
+            var points = new PointCollection(_photoContour.Select(p => new Point(
+                bounds.Left + p.Col * bounds.Width / _loadedOriginal.PixelWidth,
+                bounds.Top + p.Row * bounds.Height / _loadedOriginal.PixelHeight)));
+            points.Freeze();
+            PhotoContourPoints = points;
+            UpdatePhotoContourPosition();
+        }
+
+        /// <summary>推进到下一个有序边界顶点；最后一点与起点相同，表示闭合。</summary>
+        private void AdvancePhotoContour()
+        {
+            if (_photoContourIndex + 1 >= _photoContour.Count) return;
+            _photoContourIndex++;
+            UpdatePhotoContourPosition();
+        }
+
+        private void UpdatePhotoContourPosition()
+        {
+            var p = _photoContour[_photoContourIndex];
+            Point displayed = PhotoContourPoints[_photoContourIndex];
+            DotLeft = displayed.X - DotDiameter / 2;
+            DotTop = displayed.Y - DotDiameter / 2;
+            DotVisibility = Visibility.Visible;
+            string direction = "起点";
+            if (_photoContourIndex > 0)
+            {
+                var previous = _photoContour[_photoContourIndex - 1];
+                direction = p.Col > previous.Col ? "向右" : p.Col < previous.Col ? "向左" :
+                    p.Row > previous.Row ? "向下" : "向上";
+            }
+            bool closed = _photoContourIndex == _photoContour.Count - 1;
+            Test = $"{_photoContourScope} 最大白色区域：面积 {_photoContourArea} 像素；外轮廓步数 {_photoContour.Count - 1}。" +
+                $" 当前 {_photoContourIndex}/{_photoContour.Count - 1}：边界坐标 行 {p.Row}、列 {p.Col}，{direction}。" +
+                (closed ? "已回到起点，轮廓闭合。" : "");
+            RoiInfo = "橙线：外轮廓；红点：当前位置。点击“轮廓下一步”前进。坐标基于原图；灰度 < 100 为前景，当前不追踪孔洞。" + _photoContourWarning;
+            ContourNextCommand.RaiseCanExecuteChanged();
+        }
+
+        /// <summary>
+        /// 固定方框的路径演示：先直观看清绕行顺序，不是任意照片的自动轮廓提取。
+        /// 点坐标写成 [行, 列]；最后再次回到 A，明确展示闭合。
+        /// </summary>
+        private void ShowContourDemo()
+        {
+            int step = (_traceStep + 1) % 9;
+            (int Row, int Col)[] path =
+            {
+                (1,1), (1,2), (1,3), (2,3), (3,3), (3,2), (3,1), (2,1), (1,1)
+            };
+            string[] names = { "A", "B", "C", "D", "E", "F", "G", "H", "A" };
+            byte[,] boundary = new byte[5,5];
+            // 这些白点构成方框边界；中间和外部是黑色。
+            foreach (var point in path)
+                boundary[point.Row, point.Col] = 255;
+            DisplayImage(GrayImageProcessor.Flatten(boundary), boundary);
+            _traceStep = step; // 显示入口清除旧演示状态后，保存本次位置。
+            TraceVisibility = Visibility.Visible;
+            var current = path[step];
+            // 列决定屏幕横坐标，行决定纵坐标；红点放到像素中心。
+            DotLeft = (current.Col + 0.5) * ImageDisplayWidth / 5 - DotDiameter / 2;
+            DotTop = (current.Row + 0.5) * ImageDisplayHeight / 5 - DotDiameter / 2;
+            DotVisibility = Visibility.Visible;
+            string direction = "起点，准备向右";
+            if (step > 0)
+            {
+                var previous = path[step - 1];
+                direction = current.Col > previous.Col ? "向右" : current.Col < previous.Col ? "向左" :
+                    current.Row > previous.Row ? "向下" : "向上";
+            }
+            Test = $"方框轮廓演示：当前 {names[step]}，行 {current.Row}、列 {current.Col}；{direction}。" +
+                (step == 8 ? "回到 A，一圈闭合。" : "") +
+                $" 路径：{string.Join(" → ", names.Take(step + 1))}";
+            RoiInfo = "继续点击“轮廓追踪演示”前进一步。白色是边界，红点是当前位置；这是固定路径示例。闭合后再点从 A 重新开始。";
+        }
+
+        /// <summary>连续点击同一个按钮，循环显示原图、第一步、第二步。</summary>
+        private void ShowMorphologyDemo(bool opening)
+        {
+            string mode = opening ? "开运算" : "闭运算";
+            int step = _morphologyMode == mode ? (_morphologyStep + 1) % 3 : 0;
+            byte[,] original = CreateMorphologyDemo(opening);
+            // 每次重新从固定原图推导；第二步明确读取第一步的结果。
+            byte[,] first = opening ? GrayImageProcessor.Erode3x3(original)
+                                    : GrayImageProcessor.Dilate3x3(original);
+            byte[,] second = opening ? GrayImageProcessor.Dilate3x3(first)
+                                     : GrayImageProcessor.Erode3x3(first);
+            byte[,] shown = step == 0 ? original : step == 1 ? first : second;
+            DisplayImage(GrayImageProcessor.Flatten(shown), shown);
+            ImageStretch = Stretch.Uniform; // 方格保持正方形。
+            _morphologyMode = mode;
+            _morphologyStep = step;
+            string[] openingNotes = { "原图：左上孤立白点 + 5×5 白块", "先腐蚀：白点消失，白块缩为 3×3", "再膨胀：白块恢复 5×5，孤立白点没有恢复" };
+            string[] closingNotes = { "原图：5×5 白块中心有一个黑洞", "先膨胀：黑洞填满，白块扩大为 7×7", "再腐蚀：白块回到 5×5，中心黑洞已填补" };
+            Test = $"{mode}演示 {step + 1}/3 — {(opening ? openingNotes : closingNotes)[step]}";
+            RoiInfo = $"继续点击“{mode}演示”看下一步；第三步后回到原图。白色为前景，3×3 方形邻域，图片外按黑色。";
+        }
+
+        /// <summary>11×11 小图放大展示，不用真实照片，方便看清每一轮变化。</summary>
+        private static byte[,] CreateMorphologyDemo(bool opening)
+        {
+            byte[,] binary = new byte[11, 11];
+            for (int x = 3; x <= 7; x++)
+                for (int y = 3; y <= 7; y++)
+                    binary[x, y] = 255;
+            if (opening) binary[1, 1] = 255; // 独立白噪点。
+            else binary[5, 5] = 0;          // 白块中心的黑洞。
+            return binary;
+        }
 
 
     }

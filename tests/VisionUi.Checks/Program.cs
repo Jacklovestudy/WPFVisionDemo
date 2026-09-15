@@ -12,6 +12,105 @@ internal static class Program
     private static void Main(string[] args)
     {
         var vm = new MainWindowViewModel();
+        // ROI 外的大暗块不能抢走 ROI 内的小目标；轮廓须映射回原图。
+        var roiTraceVm = new MainWindowViewModel();
+        byte[] roiTracePixels = Enumerable.Repeat((byte)255, 48).ToArray();
+        for (int row = 0; row < 6; row++)
+            for (int col = 0; col < 3; col++) roiTracePixels[row * 8 + col] = 0;
+        roiTracePixels[3 * 8 + 5] = 0;
+        var roiTraceImage = System.Windows.Media.Imaging.BitmapSource.Create(8,6,96,96,
+            PixelFormats.Gray8,null,roiTracePixels,8);
+        typeof(MainWindowViewModel).GetField("_loadedOriginal", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(roiTraceVm, roiTraceImage);
+        var selectionField = typeof(MainWindowViewModel).GetField("_photoRoi", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        selectionField.SetValue(roiTraceVm, new Int32Rect(4,2,3,3));
+        for (int repeat = 0; repeat < 2; repeat++)
+        {
+            roiTraceVm.PhotoContourCommand.Execute();
+            if (roiTraceVm.PhotoContourPoints.Count != 5 ||
+                roiTraceVm.PhotoContourPoints[0] != new Point(250,160) ||
+                !roiTraceVm.Test.Contains("ROI") || !roiTraceVm.Test.Contains("面积 1 "))
+                throw new Exception("ROI contour selection or coordinate offset incorrect");
+        }
+        selectionField.SetValue(roiTraceVm, new Int32Rect(6,0,2,2));
+        roiTraceVm.PhotoContourCommand.Execute();
+        if (roiTraceVm.PhotoContourPoints.Count != 0 || roiTraceVm.ContourNextCommand.CanExecute())
+            throw new Exception("Empty ROI incorrectly fell back to full image");
+        if (vm.PhotoContourCommand.CanExecute() || vm.ContourNextCommand.CanExecute())
+            throw new Exception("Photo contour commands enabled before load");
+        var photoTraceVm = new MainWindowViewModel();
+        var photoTraceInput = System.Windows.Media.Imaging.BitmapSource.Create(3, 3, 96, 96,
+            PixelFormats.Gray8, null, new byte[] { 255,255,255,255,0,255,255,255,255 }, 3);
+        var photoField = typeof(MainWindowViewModel).GetField("_loadedOriginal", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        photoField.SetValue(photoTraceVm, photoTraceInput);
+        photoTraceVm.PhotoContourCommand.Execute();
+        if (!ReferenceEquals(photoTraceVm.GrayImage, photoTraceInput) || photoTraceVm.PhotoContourPoints.Count != 5)
+            throw new Exception("Photo contour not derived from loaded image");
+        Point firstPhotoPoint = photoTraceVm.PhotoContourPoints[0];
+        if (Math.Abs(firstPhotoPoint.X - (40 + 320.0 / 3)) > 0.0001 ||
+            Math.Abs(firstPhotoPoint.Y - 320.0 / 3) > 0.0001)
+            throw new Exception("Photo contour letterbox mapping incorrect");
+        for (int i = 0; i < 4; i++) photoTraceVm.ContourNextCommand.Execute();
+        if (photoTraceVm.ContourNextCommand.CanExecute() || !photoTraceVm.Test.Contains("闭合"))
+            throw new Exception("Photo contour closure incorrect");
+        photoTraceVm.ShowLoadedOriginalCommand.Execute();
+        if (photoTraceVm.PhotoContourPoints.Count != 0 || photoTraceVm.ContourNextCommand.CanExecute())
+            throw new Exception("Stale photo contour after display switch");
+        photoField.SetValue(photoTraceVm, System.Windows.Media.Imaging.BitmapSource.Create(1, 1, 96, 96,
+            PixelFormats.Gray8, null, new byte[] { 255 }, 1));
+        photoTraceVm.PhotoContourCommand.Execute();
+        if (photoTraceVm.PhotoContourPoints.Count != 0 || !photoTraceVm.Test.Contains("为空"))
+            throw new Exception("Empty foreground handled incorrectly");
+        var traceVm = new MainWindowViewModel();
+        (int Row, int Col)[] expectedTrace = { (1,1),(1,2),(1,3),(2,3),(3,3),(3,2),(3,1),(2,1),(1,1) };
+        foreach (var point in expectedTrace)
+        {
+            traceVm.ContourDemoCommand.Execute();
+            if (traceVm.DotLeft != (point.Col + 0.5) * 80 - 4 ||
+                traceVm.DotTop != (point.Row + 0.5) * 64 - 4 ||
+                traceVm.TraceVisibility != Visibility.Visible)
+                throw new Exception("Contour demo position incorrect");
+        }
+        if (!traceVm.Test.Contains("闭合")) throw new Exception("Contour closure missing");
+        traceVm.OpeningDemoCommand.Execute();
+        if (traceVm.TraceVisibility != Visibility.Collapsed) throw new Exception("Stale trace labels");
+        traceVm.ContourDemoCommand.Execute();
+        if (!traceVm.Test.Contains("起点")) throw new Exception("Contour demo did not restart");
+        if (vm.EdgeCommand.CanExecute()) throw new Exception("Edge enabled without photo");
+        var edgeVm = new MainWindowViewModel();
+        var edgeInput = System.Windows.Media.Imaging.BitmapSource.Create(6, 1, 96, 96,
+            PixelFormats.Gray8, null, new byte[] { 0,0,0,255,255,255 }, 6);
+        typeof(MainWindowViewModel).GetField("_loadedOriginal", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(edgeVm, edgeInput);
+        for (int repeat = 0; repeat < 2; repeat++)
+        {
+            edgeVm.EdgeCommand.Execute();
+            byte[] actual = new byte[6];
+            edgeVm.GrayImage!.CopyPixels(actual, 6, 0);
+            if (!actual.SequenceEqual(new byte[] { 0,255,255,255,0,0 }))
+                throw new Exception("Mean plus edge pipeline incorrect");
+        }
+        edgeVm.ShowLoadedOriginalCommand.Execute();
+        if (!ReferenceEquals(edgeVm.GrayImage, edgeInput)) throw new Exception("Edge lost original");
+        var morphVm = new MainWindowViewModel();
+        int WhiteCount()
+        {
+            byte[] pixels = new byte[121];
+            morphVm.GrayImage!.CopyPixels(pixels, 11, 0);
+            return pixels.Count(p => p == 255);
+        }
+        foreach (int expected in new[] { 26, 9, 25, 26 })
+        {
+            morphVm.OpeningDemoCommand.Execute();
+            if (WhiteCount() != expected) throw new Exception("Opening demo step incorrect");
+        }
+        foreach (int expected in new[] { 24, 49, 25, 24 })
+        {
+            morphVm.ClosingDemoCommand.Execute();
+            if (WhiteCount() != expected) throw new Exception("Closing demo step incorrect");
+        }
+        morphVm.OpeningDemoCommand.Execute();
+        if (WhiteCount() != 26) throw new Exception("Switching demo did not reset step");
         if (vm.MedianFilterCommand.CanExecute() || vm.MedianBinaryCommand.CanExecute())
             throw new Exception("Median commands enabled without photo");
         var medianVm = new MainWindowViewModel();
@@ -138,6 +237,15 @@ internal static class Program
         if (args.Length > 0)
         {
             RunExperiment("LoadImageFile", args[0]);
+            vm.PhotoContourCommand.Execute();
+            if (vm.PhotoContourPoints.Count < 5 || vm.PhotoContourPoints[0] != vm.PhotoContourPoints[^1])
+                throw new Exception("Real photo outer contour not closed");
+            content.UpdateLayout();
+            var contourLine = (Polyline?)window.FindName("PhotoContourLine");
+            if (contourLine == null || contourLine.Points.Count != vm.PhotoContourPoints.Count)
+                throw new Exception("Photo contour XAML binding missing");
+            Console.WriteLine($"Real photo contour: {vm.PhotoContourPoints.Count - 1} steps, closed.");
+            vm.ShowLoadedOriginalCommand.Execute();
             var original = vm.GrayImage!;
             if (original.PixelWidth != 1702 || original.PixelHeight != 1276)
                 throw new Exception("Sample photo dimensions incorrect");

@@ -6,6 +6,26 @@ namespace VisionStudyDemo.Imaging
 {
     public static class ImageFileLoader
     {
+        /// <summary>原照片 → 灰度和 3×3 均值滤波 → 右/下灰度差 → 黑白边缘图。</summary>
+        public static BitmapSource DetectEdges(BitmapSource image, int threshold)
+        {
+            BitmapSource filtered = MeanFilter3x3(image);
+            int width = filtered.PixelWidth, height = filtered.PixelHeight;
+            byte[] pixels = new byte[checked(width * height)];
+            filtered.CopyPixels(pixels, width, 0);
+            byte[,] gray = new byte[height, width];
+            for (int x = 0; x < height; x++)
+                for (int y = 0; y < width; y++)
+                    gray[x, y] = pixels[x * width + y];
+
+            // 不先对灰度值二值化，直接比较滤波后相邻像素的差。
+            byte[,] edges = GrayImageProcessor.DetectEdges(gray, threshold);
+            var result = BitmapSource.Create(width, height, 96, 96,
+                PixelFormats.Gray8, null, GrayImageProcessor.Flatten(edges), width);
+            result.Freeze();
+            return result;
+        }
+
         /// <summary>照片转 Gray8，再交给二维数组中值算法；不修改原图。</summary>
         public static BitmapSource MedianFilter3x3(BitmapSource image)
         {

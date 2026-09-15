@@ -15,12 +15,18 @@
                 <Button Content="选择图片…" Padding="16,8" Margin="4" Command="{Binding SelectImageCommand}"/>
                 <Button Content="显示原图" Padding="16,8" Margin="4" Command="{Binding ShowLoadedOriginalCommand}"/>
                 <Button Content="转灰度" Padding="16,8" Margin="4" Command="{Binding ConvertToGrayCommand}"/>
+                <Button Content="边缘检测（差值 > 50）" Padding="16,8" Margin="4" Command="{Binding EdgeCommand}" ToolTip="整张原图先转灰度、均值滤波，再比较右边与下边的灰度差"/>
                 <Button Content="均值滤波（3×3）" Padding="16,8" Margin="4" Command="{Binding MeanFilterCommand}" ToolTip="对整张原图转灰度后滤波，每次只处理一次"/>
                 <Button Content="均值后二值化（100）" Padding="16,8" Margin="4" Command="{Binding MeanBinaryCommand}"/>
                 <Button Content="中值滤波（3×3）" Padding="16,8" Margin="4" Command="{Binding MedianFilterCommand}" ToolTip="整张原图转灰度后，取有效邻域中值；每次只处理一次"/>
                 <Button Content="中值后二值化（100）" Padding="16,8" Margin="4" Command="{Binding MedianBinaryCommand}"/>
                 <Button Content="二值化（100）" Padding="16,8" Margin="4" Command="{Binding ConvertToBinaryCommand}"/>
                 <Button Content="数组实验" Padding="16,8" Margin="4" Command="{Binding TestCommand}"/>
+                <Button Content="轮廓追踪演示" Padding="16,8" Margin="4" Command="{Binding ContourDemoCommand}"/>
+                <Button Content="提取照片轮廓" Padding="16,8" Margin="4" Command="{Binding PhotoContourCommand}"/>
+                <Button Content="轮廓下一步" Padding="16,8" Margin="4" Command="{Binding ContourNextCommand}"/>
+                <Button Content="开运算演示" Padding="16,8" Margin="4" Command="{Binding OpeningDemoCommand}"/>
+                <Button Content="闭运算演示" Padding="16,8" Margin="4" Command="{Binding ClosingDemoCommand}"/>
                 <Button Content="框选 ROI" Padding="16,8" Margin="4" Command="{Binding SelectRoiCommand}"/>
                 <Button Content="ROI 二值化（100）" Padding="16,8" Margin="4" Command="{Binding RoiBinaryCommand}"/>
                 <Button Content="清除 ROI" Padding="16,8" Margin="4" Command="{Binding ClearRoiCommand}"/>
@@ -51,6 +57,20 @@
            RenderOptions.BitmapScalingMode="{Binding ImageScalingMode}" />
 
                 <Canvas IsHitTestVisible="False">
+                    <Polyline x:Name="PhotoContourLine" Points="{Binding PhotoContourPoints}"
+                              Stroke="DarkOrange" StrokeThickness="2"/>
+                    <!-- 5×5 演示图铺满 400×320：每格 80×64，字母位于红点上方。 -->
+                    <Canvas Visibility="{Binding TraceVisibility}">
+                        <Canvas.Resources><Style TargetType="TextBlock"><Setter Property="Foreground" Value="Black"/><Setter Property="FontWeight" Value="Bold"/></Style></Canvas.Resources>
+                        <TextBlock Text="A" Canvas.Left="114" Canvas.Top="70"/>
+                        <TextBlock Text="B" Canvas.Left="194" Canvas.Top="70"/>
+                        <TextBlock Text="C" Canvas.Left="274" Canvas.Top="70"/>
+                        <TextBlock Text="D" Canvas.Left="274" Canvas.Top="134"/>
+                        <TextBlock Text="E" Canvas.Left="274" Canvas.Top="198"/>
+                        <TextBlock Text="F" Canvas.Left="194" Canvas.Top="198"/>
+                        <TextBlock Text="G" Canvas.Left="114" Canvas.Top="198"/>
+                        <TextBlock Text="H" Canvas.Left="114" Canvas.Top="134"/>
+                    </Canvas>
                     <Rectangle x:Name="RegionBox" Canvas.Left="{Binding BoxLeft}"
                    Canvas.Top="{Binding BoxTop}"
                    Width="{Binding BoxWidth}"
